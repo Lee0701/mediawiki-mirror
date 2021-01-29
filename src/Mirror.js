@@ -9,6 +9,7 @@ const Skin = require('./Skin')
 const API_ENDPOINT = '/api.php'
 
 const MIRROR_CONFIG_FILENAME = 'mirror.json'
+const TITLES_FILENAME = 'titles.txt'
 const PAGES_PATHNAME = 'pages'
 const RAWS_PATHNAME = 'raws'
 
@@ -17,10 +18,23 @@ const Mirror = class Mirror {
         this.config = config
         this.dir = dir
         this.skin = new Skin(path.join(this.dir, config.skinPath))
+        this.readTitles()
     }
-    writeInfo() {
+    writeConfig() {
         if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir)
         fs.writeFileSync(path.join(this.dir, MIRROR_CONFIG_FILENAME), this.config.json())
+    }
+    writeTitles() {
+        if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir)
+        fs.writeFileSync(path.join(this.dir, TITLES_FILENAME), this.titles.join('\n'))
+    }
+    writeMetadata() {
+        this.writeConfig()
+        this.writeTitles()
+    }
+    readTitles() {
+        if(!fs.existsSync(path.join(this.dir, TITLES_FILENAME))) return
+        this.titles = fs.readFileSync(path.join(this.dir, TITLES_FILENAME)).toString().split('\n')
     }
     writeRaw(page) {
         return new Promise((resolve, reject) => {
@@ -55,7 +69,7 @@ const Mirror = class Mirror {
                 const {title, text} = data.parse
                 const content = text
                 const page = {title, content}
-                this.writePageAndRaw(page).then(() => resolve(page)).catch((error) => reject({error}))
+                this.writeRaw(page).then(() => resolve(page)).catch((error) => reject({error}))
             }).catch((error) => {
                 reject({error})
             })
@@ -92,8 +106,12 @@ const Mirror = class Mirror {
             const update = (apcontinue) => {
                 this.updateBatch(batch, namespace, apcontinue).then(({apcontinue, updatedPages}) => {
                     pages.push(...updatedPages)
-                    if(apcontinue == null) resolve({updatedPages: pages})
-                    else setTimeout(() => update(apcontinue), interval)
+                    if(apcontinue == null) {
+                        this.titles = pages.map(({title}) => title)
+                        resolve({updatedPages: pages})
+                    } else {
+                        setTimeout(() => update(apcontinue), interval)
+                    }
                 }).catch(({error}) => {
                     reject({error, updatedPages: pages})
                 })
@@ -101,8 +119,23 @@ const Mirror = class Mirror {
             update()
         })
     }
-    fullRebuild() {
-
+    buildPage(title) {
+        return new Promise((resolve, reject) => {
+            fs.readFile(this.getRawPath(title), (error, data) => {
+                if(error) reject(error)
+                else {
+                    const content = data.toString()
+                    this.writePage({title, content}).then(() => resolve({title, content})).catch(reject)
+                }
+            })
+        })
+    }
+    fullBuild() {
+        return new Promise((resolve, reject) => {
+            Promise.all(this.titles.map((title) => this.buildPage(title)))
+                    .then((builtPages) => resolve({builtPages}))
+                    .catch(reject)
+        })
     }
     escapeTitle(title) {
         return title.replace(/\$/g, '$$').replace(/\//g, '$s')

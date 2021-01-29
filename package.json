@@ -6,7 +6,8 @@
   "scripts": {
     "serve": "node src/main.js serve",
     "init": "node src/main.js init",
-    "fullupdate": "node src/main.js fullupdate"
+    "fullupdate": "node src/main.js fullupdate",
+    "fullbuild": "node src/main.js fullbuild"
   },
   "keywords": [],
   "author": "Lee0701",
