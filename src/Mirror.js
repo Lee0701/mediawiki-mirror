@@ -2,6 +2,7 @@
 const fs = require('fs')
 const path = require('path')
 const axios = require('axios')
+const cheerio = require('cheerio')
 
 const MirrorConfig = require('./MirrorConfig')
 const Skin = require('./Skin')
@@ -67,7 +68,16 @@ const Mirror = class Mirror {
                 }
             }).then(({data}) => {
                 const {title, text} = data.parse
-                const content = text
+                const $ = cheerio.load(text)
+                const mwParserOutput = $('.mw-parser-output')
+                const redirectText = mwParserOutput.find('.redirectMsg .redirectText li a')
+                console.log(title, redirectText.length)
+                mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
+                let content = ''
+                content = mwParserOutput.html().replace(/\n\n/g, '\n')
+                if(redirectText.length) {
+                    content += `<script>location.href="${redirectText.attr('href')}";</script>`
+                }
                 const page = {title, content}
                 this.writePageAndRaw(page).then(() => resolve(page)).catch((error) => reject({error}))
             }).catch((error) => {
