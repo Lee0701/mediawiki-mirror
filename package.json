@@ -1,0 +1,16 @@
+{
+  "name": "mediawiki-mirror",
+  "version": "0.0.1",
+  "description": "",
+  "main": "src/main.js",
+  "scripts": {
+    "init": "node src/main.js init",
+    "fullupdate" : "node src/main.js fullupdate"
+  },
+  "keywords": [],
+  "author": "Lee0701",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "axios": "^0.21.1"
+  }
+}
