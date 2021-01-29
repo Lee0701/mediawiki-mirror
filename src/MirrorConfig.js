@@ -1,6 +1,5 @@
 
 const fs = require('fs')
-const path = require('path')
 
 const MirrorConfig = class MirrorConfig {
     constructor(url='', title='Wiki Mirror') {

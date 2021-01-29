@@ -69,7 +69,7 @@ const Mirror = class Mirror {
                 const {title, text} = data.parse
                 const content = text
                 const page = {title, content}
-                this.writeRaw(page).then(() => resolve(page)).catch((error) => reject({error}))
+                this.writePageAndRaw(page).then(() => resolve(page)).catch((error) => reject({error}))
             }).catch((error) => {
                 reject({error})
             })
@@ -117,6 +117,28 @@ const Mirror = class Mirror {
                 })
             }
             update()
+        })
+    }
+    update() {
+        const rcnamespace = 0
+        const rcend = Math.floor(this.config.lastUpdate / 1000)
+        this.config.lastUpdate = new Date().getTime()
+        return new Promise((resolve, reject) => {
+            axios.get(new URL(API_ENDPOINT, this.config.url).href, {
+                params: {
+                    format: 'json',
+                    action: 'query',
+                    list: 'recentchanges',
+                    rclimit: 'max',
+                    rcnamespace,
+                    rcend,
+                }
+            }).then(({data}) => {
+                const titles = data.query.recentchanges.map(({title}) => title)
+                Promise.all(titles.map((title) => this.updateTitle(title))).then((updatedPages) => {
+                    resolve({updatedPages})
+                }).catch((errors) => reject({error: errors}))
+            }).catch((error) => reject({error}))
         })
     }
     buildPage(title) {

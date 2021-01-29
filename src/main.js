@@ -26,6 +26,14 @@ if(args.length > 0) {
             console.log(`${updatedPages.length} pages updated.`)
             mirror.writeMetadata()
         }).catch(console.error)
+    } else if(command == 'update') {
+        const dir = (args.length > 0) ? args[0] : '.'
+        const mirror = Mirror.load(dir)
+        console.log(`update started.`)
+        mirror.update().then(({updatedPages}) => {
+            console.log(`${updatedPages.length} pages updated.`)
+            mirror.writeMetadata()
+        })
     } else if(command == 'fullbuild') {
         const dir = (args.length > 0) ? args[0] : '.'
         const mirror = Mirror.load(dir)
