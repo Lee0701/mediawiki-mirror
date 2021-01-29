@@ -48,13 +48,20 @@ if(args.length > 0) {
         const mirror = Mirror.load(dir)
         const app = express()
         const prefix = '/wiki'
-        app.get(`${prefix}/*`, (req, res) => {
+        app.get('/', (req, res) => {
+            res.redirect(`${prefix}/${mirror.config.mainPage}`)
+        })
+        app.get(`${prefix}*`, (req, res) => {
             const url = decodeURIComponent(req.url.replace(prefix, ''))
             console.log(url)
+            if(url == '/' || url == '') return res.redirect(`${prefix}/${mirror.config.mainPage}`)
             const title = (url.charAt(0) == '/') ? url.slice(1) : url
             const content = mirror.getPageContent(title)
             if(content === null) res.status(404).send('404')
             else res.status(200).send(content)
+        })
+        app.get(`/index.php`, (req, res) => {
+            res.redirect(new URL(req.url, mirror.config.url).href)
         })
         app.listen(port)
     } else {
