@@ -23,7 +23,7 @@ if(args.length > 0) {
         mirror.fullUpdate(1000, 10).then(({updatedPages}) => {
             console.log(`${updatedPages.length} pages updated.`)
             mirror.writeInfo()
-        })
+        }).catch(console.error)
     } else if(command == 'serve') {
         const dir = (args.length > 0) ? args[0] : '.'
         const port = (args.length > 1) ? args[1] : 8080

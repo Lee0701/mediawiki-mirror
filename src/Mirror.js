@@ -3,31 +3,70 @@ const fs = require('fs')
 const path = require('path')
 const axios = require('axios')
 
-const MirrorInfo = require('./MirrorInfo')
+const MirrorConfig = require('./MirrorConfig')
+const Skin = require('./Skin')
 
-const MIRROR_INFO_FILENAME = 'mirror.json'
+const API_ENDPOINT = '/api.php'
+
+const MIRROR_CONFIG_FILENAME = 'mirror.json'
+const PAGES_PATHNAME = 'pages'
+const RAWS_PATHNAME = 'raws'
 
 const Mirror = class Mirror {
-    constructor(info, dir) {
-        this.info = info
+    constructor(config, dir) {
+        this.config = config
         this.dir = dir
+        this.skin = new Skin(path.join(this.dir, config.skinPath))
     }
     writeInfo() {
         if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir)
-        fs.writeFileSync(path.join(this.dir, MIRROR_INFO_FILENAME), this.info.json())
+        fs.writeFileSync(path.join(this.dir, MIRROR_CONFIG_FILENAME), this.config.json())
+    }
+    writeRaw(page) {
+        return new Promise((resolve, reject) => {
+            fs.writeFile(this.getRawPath(page.title), page.content, (error) => {
+                if(error) reject(error)
+                else resolve()
+            })
+        })
+    }
+    writePage(page) {
+        return new Promise((resolve, reject) => {
+            fs.writeFile(this.getPagePath(page.title), this.skin.formatIndex({site: this.config, page}), (error) => {
+                if(error) reject(error)
+                else resolve()
+            })
+        })
+    }
+    writePageAndRaw(page) {
+        return Promise.all([this.writePage(page), this.writeRaw(page)])
     }
     updateTitle(title) {
         return new Promise((resolve, reject) => {
-            console.log(title)
-            resolve(title)
+            axios.get(new URL(API_ENDPOINT, this.config.url).href, {
+                params: {
+                    format: 'json',
+                    action: 'parse',
+                    page: title,
+                    prop: 'text',
+                    formatversion: 2
+                }
+            }).then(({data}) => {
+                const {title, text} = data.parse
+                const content = text
+                const page = {title, content}
+                this.writePageAndRaw(page).then(() => resolve(page)).catch((error) => reject({error}))
+            }).catch((error) => {
+                reject({error})
+            })
         })
     }
-    batchUpdate = (aplimit, apnamespace=0, apcontinue=null) => {
+    updateBatch = (aplimit, apnamespace=0, apcontinue=null) => {
         return new Promise((resolve, reject) => {
-            axios.get(new URL('/api.php', this.info.url).href, {
+            axios.get(new URL(API_ENDPOINT, this.config.url).href, {
                 params: {
-                    action: 'query',
                     format: 'json',
+                    action: 'query',
                     list: 'allpages',
                     aplimit,
                     apnamespace,
@@ -38,31 +77,47 @@ const Mirror = class Mirror {
                 const apcontinue = data.continue ? data.continue.apcontinue : null
                 Promise.all(titles.map((title) => this.updateTitle(title))).then((updatedPages) => {
                     resolve({apcontinue, updatedPages})
-                })
+                }).catch((errors) => reject({error: errors}))
             }).catch((error) => {
-                reject(error)
+                reject({error})
             })
         })
     }
     fullUpdate(interval, batch) {
-        this.info.lastUpdate = new Date().getTime()
+        this.config.lastUpdate = new Date().getTime()
+        this.mkdirs()
         const namespace = 0
         return new Promise((resolve, reject) => {
             const pages = []
             const update = (apcontinue) => {
-                this.batchUpdate(batch, namespace, apcontinue).then(({apcontinue, updatedPages}) => {
+                this.updateBatch(batch, namespace, apcontinue).then(({apcontinue, updatedPages}) => {
                     pages.push(...updatedPages)
                     if(apcontinue == null) resolve({updatedPages: pages})
                     else setTimeout(() => update(apcontinue), interval)
-                }).catch((error) => {
+                }).catch(({error}) => {
                     reject({error, updatedPages: pages})
                 })
             }
             update()
         })
     }
+    fullRebuild() {
+
+    }
+    escapeTitle(title) {
+        return title.replace(/\$/g, '$$').replace(/\//g, '$s')
+    }
+    getRawPath(title) {
+        return path.join(this.dir, RAWS_PATHNAME, `${this.escapeTitle(title)}.txt`)
+    }
     getPagePath(title) {
-        return path.join(this.dir, 'pages', `${title}.html`)
+        return path.join(this.dir, PAGES_PATHNAME, `${this.escapeTitle(title)}.html`)
+    }
+    mkdirs() {
+        const pages = path.join(this.dir, PAGES_PATHNAME)
+        if(!fs.existsSync(pages)) fs.mkdirSync(pages)
+        const raws = path.join(this.dir, RAWS_PATHNAME)
+        if(!fs.existsSync(raws)) fs.mkdirSync(raws)
     }
     getPageContent(title) {
         const path = this.getPagePath(title)
@@ -72,15 +127,14 @@ const Mirror = class Mirror {
 }
 
 Mirror.init = function(url, dir) {
-    const mirrorInfo = new MirrorInfo(url)
-    const mirror = new Mirror(mirrorInfo, dir)
+    const config = new MirrorConfig(url)
+    const mirror = new Mirror(config, dir)
     return mirror
 }
 
 Mirror.load = function(dir) {
-    const json = JSON.parse(fs.readFileSync(path.join(dir, MIRROR_INFO_FILENAME)).toString())
-    const mirrorInfo = new MirrorInfo(json.url, json.lastUpdate)
-    const mirror = new Mirror(mirrorInfo, dir)
+    const config = MirrorConfig.load(path.join(dir, MIRROR_CONFIG_FILENAME))
+    const mirror = new Mirror(config, dir)
     return mirror
 }
 
