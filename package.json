@@ -4,13 +4,15 @@
   "description": "",
   "main": "src/main.js",
   "scripts": {
+    "serve": "node src/main.js serve",
     "init": "node src/main.js init",
-    "fullupdate" : "node src/main.js fullupdate"
+    "fullupdate": "node src/main.js fullupdate"
   },
   "keywords": [],
   "author": "Lee0701",
   "license": "GPL-3.0",
   "dependencies": {
-    "axios": "^0.21.1"
+    "axios": "^0.21.1",
+    "express": "^4.17.1"
   }
 }

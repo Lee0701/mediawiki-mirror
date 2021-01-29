@@ -36,8 +36,8 @@ const Mirror = class Mirror {
             }).then(({data}) => {
                 const titles = data.query.allpages.map(({title}) => title)
                 const apcontinue = data.continue ? data.continue.apcontinue : null
-                Promise.all(titles.map((title) => this.updateTitle(title))).then(() => {
-                    resolve({apcontinue, updatedTitles: titles})
+                Promise.all(titles.map((title) => this.updateTitle(title))).then((updatedPages) => {
+                    resolve({apcontinue, updatedPages})
                 })
             }).catch((error) => {
                 reject(error)
@@ -48,18 +48,26 @@ const Mirror = class Mirror {
         this.info.lastUpdate = new Date().getTime()
         const namespace = 0
         return new Promise((resolve, reject) => {
-            const updatedTitles = []
+            const pages = []
             const update = (apcontinue) => {
-                this.batchUpdate(batch, namespace, apcontinue).then(({apcontinue, updatedTitles: titles}) => {
-                    updatedTitles.push(...titles)
-                    if(apcontinue == null) resolve({updatedTitles})
+                this.batchUpdate(batch, namespace, apcontinue).then(({apcontinue, updatedPages}) => {
+                    pages.push(...updatedPages)
+                    if(apcontinue == null) resolve({updatedPages: pages})
                     else setTimeout(() => update(apcontinue), interval)
                 }).catch((error) => {
-                    reject({error, updatedTitles})
+                    reject({error, updatedPages: pages})
                 })
             }
             update()
         })
+    }
+    getPagePath(title) {
+        return path.join(this.dir, 'pages', `${title}.html`)
+    }
+    getPageContent(title) {
+        const path = this.getPagePath(title)
+        if(!fs.existsSync(path)) return null
+        return fs.readFileSync(path).toString()
     }
 }
 
