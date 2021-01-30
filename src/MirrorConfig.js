@@ -2,8 +2,10 @@
 const fs = require('fs')
 
 const MirrorConfig = class MirrorConfig {
-    constructor(url='', title='Wiki Mirror') {
-        this.url = new URL(url).href
+    constructor(sourceUrl='', title='Wiki Mirror') {
+        this.sourceUrl = new URL(sourceUrl).href
+        this.sourceWikiUrl = '/wiki'
+        this.baseUrl = ''
         this.title = title
         this.mainPage = 'MainPage'
         this.lastUpdate = 0
@@ -16,7 +18,8 @@ const MirrorConfig = class MirrorConfig {
 
 MirrorConfig.load = function(file) {
     const json = JSON.parse(fs.readFileSync(file).toString())
-    const config = new MirrorConfig(json.url)
+    const config = new MirrorConfig(json.sourceUrl)
+    if(json.sourceWikiUrl) config.sourceWikiUrl = json.sourceWikiUrl
     if(json.title) config.title = json.title
     if(json.mainPage) config.mainPage = json.mainPage
     if(json.lastUpdate) config.lastUpdate = json.lastUpdate

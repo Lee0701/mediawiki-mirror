@@ -15,28 +15,35 @@ const PAGES_PATHNAME = 'pages'
 const RAWS_PATHNAME = 'raws'
 
 const Mirror = class Mirror {
+
     constructor(config, dir) {
         this.config = config
         this.dir = dir
         this.skin = new Skin(path.join(this.dir, config.skinPath))
+        this.titles = []
         this.readTitles()
     }
+
     writeConfig() {
         if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir)
         fs.writeFileSync(path.join(this.dir, MIRROR_CONFIG_FILENAME), this.config.json())
     }
+
     writeTitles() {
         if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir)
         fs.writeFileSync(path.join(this.dir, TITLES_FILENAME), this.titles.join('\n'))
     }
+    
     writeMetadata() {
         this.writeConfig()
         this.writeTitles()
     }
+
     readTitles() {
         if(!fs.existsSync(path.join(this.dir, TITLES_FILENAME))) return
         this.titles = fs.readFileSync(path.join(this.dir, TITLES_FILENAME)).toString().split('\n')
     }
+
     writeRaw(page) {
         return new Promise((resolve, reject) => {
             fs.writeFile(this.getRawPath(page.title), page.content, (error) => {
@@ -45,6 +52,7 @@ const Mirror = class Mirror {
             })
         })
     }
+
     writePage(page) {
         return new Promise((resolve, reject) => {
             fs.writeFile(this.getPagePath(page.title), this.skin.formatIndex({site: this.config, page}), (error) => {
@@ -53,12 +61,10 @@ const Mirror = class Mirror {
             })
         })
     }
-    writePageAndRaw(page) {
-        return Promise.all([this.writePage(page), this.writeRaw(page)])
-    }
+
     updateTitle(title) {
         return new Promise((resolve, reject) => {
-            axios.get(new URL(API_ENDPOINT, this.config.url).href, {
+            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
                 params: {
                     format: 'json',
                     action: 'parse',
@@ -68,26 +74,36 @@ const Mirror = class Mirror {
                 }
             }).then(({data}) => {
                 const {title, text} = data.parse
-                const $ = cheerio.load(text)
-                const mwParserOutput = $('.mw-parser-output')
-                const redirectText = mwParserOutput.find('.redirectMsg .redirectText li a')
-                console.log(title, redirectText.length)
-                mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
-                let content = ''
-                content = mwParserOutput.html().replace(/\n\n/g, '\n')
-                if(redirectText.length) {
-                    content += `<script>location.href="${redirectText.attr('href')}";</script>`
-                }
-                const page = {title, content}
-                this.writePageAndRaw(page).then(() => resolve(page)).catch((error) => reject({error}))
+                const rawPage = {title, content: text}
+                this.writeRaw(rawPage).then(() => {
+                    const $ = cheerio.load(text)
+                    const mwParserOutput = $('.mw-parser-output')
+
+                    mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
+                    mwParserOutput.find('a').attr('href', (_i, href) => {
+                        if(!href) return
+                        const replace = this.config.sourceWikiUrl
+                        const to = this.config.baseUrl
+                        if(href.slice(0, replace.length) == replace) {
+                            return to + href.slice(replace.length)
+                        } else return href
+                    })
+                    const content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
+
+                    const page = {title, content}
+                    this.writePage(page)
+                            .then(() => resolve(page))
+                            .catch((error) => reject({error}))
+                }).catch((error) => reject({error}))
             }).catch((error) => {
                 reject({error})
             })
         })
     }
+
     updateBatch = (aplimit, apnamespace=0, apcontinue=null) => {
         return new Promise((resolve, reject) => {
-            axios.get(new URL(API_ENDPOINT, this.config.url).href, {
+            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
                 params: {
                     format: 'json',
                     action: 'query',
@@ -107,6 +123,7 @@ const Mirror = class Mirror {
             })
         })
     }
+
     fullUpdate(interval, batch) {
         this.config.lastUpdate = new Date().getTime()
         this.mkdirs()
@@ -129,12 +146,13 @@ const Mirror = class Mirror {
             update()
         })
     }
+
     update() {
         const rcnamespace = 0
         const rcend = Math.floor(this.config.lastUpdate / 1000)
         this.config.lastUpdate = new Date().getTime()
         return new Promise((resolve, reject) => {
-            axios.get(new URL(API_ENDPOINT, this.config.url).href, {
+            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
                 params: {
                     format: 'json',
                     action: 'query',
@@ -151,6 +169,7 @@ const Mirror = class Mirror {
             }).catch((error) => reject({error}))
         })
     }
+
     buildPage(title) {
         return new Promise((resolve, reject) => {
             fs.readFile(this.getRawPath(title), (error, data) => {
@@ -162,6 +181,7 @@ const Mirror = class Mirror {
             })
         })
     }
+
     fullBuild() {
         return new Promise((resolve, reject) => {
             Promise.all(this.titles.map((title) => this.buildPage(title)))
@@ -169,21 +189,26 @@ const Mirror = class Mirror {
                     .catch(reject)
         })
     }
+
     escapeTitle(title) {
         return title.replace(/\$/g, '$$').replace(/\//g, '$s')
     }
+
     getRawPath(title) {
         return path.join(this.dir, RAWS_PATHNAME, `${this.escapeTitle(title)}.txt`)
     }
+
     getPagePath(title) {
         return path.join(this.dir, PAGES_PATHNAME, `${this.escapeTitle(title)}.html`)
     }
+
     mkdirs() {
         const pages = path.join(this.dir, PAGES_PATHNAME)
         if(!fs.existsSync(pages)) fs.mkdirSync(pages)
         const raws = path.join(this.dir, RAWS_PATHNAME)
         if(!fs.existsSync(raws)) fs.mkdirSync(raws)
     }
+
     getPageContent(title) {
         const path = this.getPagePath(title)
         if(!fs.existsSync(path)) return null

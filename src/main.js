@@ -47,12 +47,12 @@ if(args.length > 0) {
         const port = (args.length > 1) ? args[1] : 8080
         const mirror = Mirror.load(dir)
         const app = express()
-        const prefix = '/wiki'
+        const prefix = mirror.config.baseUrl
         app.get('/', (req, res) => {
             res.redirect(`${prefix}/${mirror.config.mainPage}`)
         })
         app.get(`${prefix}*`, (req, res) => {
-            const url = decodeURIComponent(req.url.replace(prefix, ''))
+            const url = decodeURIComponent(req.url.slice(prefix.length))
             console.log(url)
             if(url == '/' || url == '') return res.redirect(`${prefix}/${mirror.config.mainPage}`)
             const title = (url.charAt(0) == '/') ? url.slice(1) : url
