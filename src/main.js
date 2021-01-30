@@ -50,13 +50,20 @@ if(args.length > 0) {
         }
 
     } else if(command == 'update') {
-        const dir = (args.length > 0) ? args[0] : '.'
-        const mirror = Mirror.load(dir)
-        console.log(`update started.`)
-        mirror.update().then(({updatedPages}) => {
-            console.log(`${updatedPages.length} pages updated.`)
-            mirror.writeMetadata()
-        }).catch(console.error)
+        if(args.length > 0) {
+            const type = args[0]
+            const dir = (args.length > 1) ? args[1] : '.'
+            const mirror = Mirror.load(dir)
+            console.log(`update started.`)
+            if(type == 'pages') {
+                mirror.update().then(({updatedPages}) => {
+                    console.log(`${updatedPages.length} pages updated.`)
+                    mirror.writeMetadata()
+                }).catch(console.error)
+            } else if(type == 'images') {
+                
+            }
+        }
 
     } else if(command == 'fullbuild') {
         const dir = (args.length > 0) ? args[0] : '.'
