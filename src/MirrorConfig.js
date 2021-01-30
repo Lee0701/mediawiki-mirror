@@ -7,6 +7,7 @@ const MirrorConfig = class MirrorConfig {
         this.sourceWikiUrl = '/wiki'
         this.mainPage = 'MainPage'
         this.namespaces = {}
+        this.pageNamespaces = [0, 1, 2, 3, 4, 5, 6, 7, 14, 15]
 
         this.title = title
         this.baseUrl = ''
@@ -25,6 +26,7 @@ MirrorConfig.load = function(file) {
     if(json.sourceWikiUrl) config.sourceWikiUrl = json.sourceWikiUrl
     if(json.mainPage) config.mainPage = json.mainPage
     if(json.namespaces) config.namespaces = json.namespaces
+    if(json.pageNamespaces) config.pageNamespaces = json.pageNamespaces
 
     if(json.title) config.title = json.title
     if(json.baseUrl) config.baseUrl = json.baseUrl

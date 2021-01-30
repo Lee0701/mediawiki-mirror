@@ -111,7 +111,7 @@ const Mirror = class Mirror {
         })
     }
 
-    updateBatch = (aplimit, apnamespace=0, apcontinue=null) => {
+    updateBatch = (aplimit, apnamespace, apcontinue=null) => {
         return new Promise((resolve, reject) => {
             axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
                 params: {
@@ -134,17 +134,14 @@ const Mirror = class Mirror {
         })
     }
 
-    fullUpdate(interval, batch) {
-        this.config.lastUpdate = new Date().getTime()
-        this.mkdirs()
-        const namespace = 0
+    fullUpdate(namespace, interval, batch) {
         return new Promise((resolve, reject) => {
             const pages = []
             const update = (apcontinue) => {
                 this.updateBatch(batch, namespace, apcontinue).then(({apcontinue, updatedPages}) => {
                     pages.push(...updatedPages)
                     if(apcontinue == null) {
-                        this.titles = pages.map(({title}) => title)
+                        // this.titles = pages.map(({title}) => title)
                         resolve({updatedPages: pages})
                     } else {
                         setTimeout(() => update(apcontinue), interval)
@@ -157,9 +154,20 @@ const Mirror = class Mirror {
         })
     }
 
+    fullUpdateAllNamespaces(interval, batch) {
+        this.config.lastUpdate = new Date().getTime()
+        this.mkdirs()
+        return new Promise((resolve, reject) => {
+            const promises = this.config.pageNamespaces.map((namespace) => this.fullUpdate(namespace, interval, batch))
+            Promise.all(promises).then((result) => {
+                resolve({updatedPages: result.map(({updatedPages}) => updatedPages).flat()})
+            }).catch(reject)
+        })
+    }
+
     update() {
-        const rcnamespace = 0
-        const rcend = Math.floor(this.config.lastUpdate / 1000)
+        const rcnamespace = this.config.pageNamespaces.join('|')
+        const rcend = Math.floor(this.config.lastUpdate / 1000) // //milliseconds to seconds
         this.config.lastUpdate = new Date().getTime()
         return new Promise((resolve, reject) => {
             axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
@@ -241,6 +249,17 @@ const Mirror = class Mirror {
         if(!fs.existsSync(path)) return null
         return fs.readFileSync(path).toString()
     }
+
+    getNamespace(title) {
+        const split = title.split(':')
+        if(split.length > 1) return this.config.namespaces[split[0]] || 0
+        else return 0
+    }
+
+    getAllNamespaces() {
+        return Object.values(this.config.namespaces).filter((v, i, arr) => arr.indexOf(v) === i)
+    }
+
 }
 
 Mirror.init = function(url, dir) {

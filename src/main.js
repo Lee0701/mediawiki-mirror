@@ -24,7 +24,7 @@ if(args.length > 0) {
         const interval = (args.length > 2) ? parseInt(args[2]) : 1000
         const mirror = Mirror.load(dir)
         console.log(`full update started.`)
-        mirror.fullUpdate(interval, batch).then(({updatedPages}) => {
+        mirror.fullUpdateAllNamespaces(interval, batch).then(({updatedPages}) => {
             console.log(`${updatedPages.length} pages updated and built.`)
             mirror.writeMetadata()
         }).catch(console.error)
@@ -35,7 +35,7 @@ if(args.length > 0) {
         mirror.update().then(({updatedPages}) => {
             console.log(`${updatedPages.length} pages updated.`)
             mirror.writeMetadata()
-        })
+        }).catch(console.error)
     } else if(command == 'fullbuild') {
         const dir = (args.length > 0) ? args[0] : '.'
         const mirror = Mirror.load(dir)
@@ -43,7 +43,7 @@ if(args.length > 0) {
         mirror.fullBuild().then(({builtPages}) => {
             console.log(`${builtPages.length} pages built.`)
             mirror.writeMetadata()
-        })
+        }).catch(console.error)
     } else if(command == 'serve') {
         const dir = (args.length > 0) ? args[0] : '.'
         const port = (args.length > 1) ? args[1] : 8080
