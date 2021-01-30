@@ -119,13 +119,22 @@ const Mirror = class Mirror {
                     formatversion: 2,
                 }
             })
-            const promises = [getContent]
+            const getCategories = axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                params: {
+                    format: 'json',
+                    action: 'query',
+                    titles: title,
+                    prop: 'categories',
+                }
+            })
+            const promises = [getContent, getCategories]
             if(isCategory) promises.push(this.getCategoryMembers(title))
             Promise.all(promises).then((results) => {
                 const {title, text} = results[0].data.parse
-                const categories = results[0].data.parse.categories.map(({category}) => category)
+                const categories = (Object.values(results[1].data.query.pages)[0].categories || [])
+                        .map(({title}) => title)
                 const page = {title, text, categories}
-                if(isCategory && results.length > 1) page.members = results[1]
+                if(isCategory && results.length > 2) page.members = results[2]
                 this.writeRaw(title, page).then(() => {
                     this.buildPage(page).then(resolve).catch(reject)
                 }).catch((error) => reject({error}))
@@ -212,8 +221,10 @@ const Mirror = class Mirror {
         return new Promise((resolve, reject) => {
             const title = rawPage.title
             const text = rawPage.text.toString()
-            const categories = (rawPage.categories || [])
-                    .map((c) => ({name: c, url: `${this.config.baseUrl}/${encodeURIComponent(this.config.namespaces[14] + ':' + c)}`}))
+            const categories = (rawPage.categories || []).map((c) => ({
+                name: c.slice(c.indexOf(':') + 1),
+                url: `${this.config.baseUrl}/${encodeURIComponent(c)}`
+            }))
             const members = (rawPage.members || [])
                     .map((m) => ({name: m, url: `${this.config.baseUrl}/${encodeURIComponent(m)}`}))
             const page = {title, content: text, categories, members}
@@ -223,10 +234,14 @@ const Mirror = class Mirror {
             mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
             mwParserOutput.find('a').attr('href', (_i, href) => {
                 if(!href) return
+                if(href.charAt(0) !== '/') href = '/' + href
                 const replace = this.config.sourceWikiUrl
                 const to = this.config.baseUrl
+                const indexPhp = '/index.php'
                 if(href.slice(0, replace.length) == replace) {
                     return to + href.slice(replace.length)
+                } else if(href.slice(0, indexPhp.length) == indexPhp) {
+                    return new URL(href, this.config.sourceUrl).href
                 } else return href
             })
             page.content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
