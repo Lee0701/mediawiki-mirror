@@ -44,6 +44,33 @@ const Mirror = class Mirror {
         this.titles = fs.readFileSync(path.join(this.dir, TITLES_FILENAME)).toString().split('\n')
     }
 
+    updateMeta() {
+        return new Promise((resolve, reject) => {
+            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                params: {
+                    format: 'json',
+                    action: 'query',
+                    meta: 'siteinfo',
+                    siprop: 'general|namespaces|namespacealiases',
+                }
+            }).then(({data}) => {
+                const {general, namespaces, namespacealiases} = data.query
+                this.config.mainPage = general.mainpage
+                const namespacesMap = {}
+                Object.values(namespaces).forEach((data) => {
+                    if(data.canonical) namespacesMap[data.canonical] = data.id
+                    if(data['*']) namespacesMap[data['*']] = data.id
+                })
+                namespacealiases.forEach((data) => {
+                    namespacesMap[data['*']] = data.id
+                })
+                this.config.namespaces = namespacesMap
+
+                resolve()
+            }).catch((error) => reject({error}))
+        })
+    }
+
     writeRaw(page) {
         return new Promise((resolve, reject) => {
             fs.writeFile(this.getRawPath(page.title), page.content, (error) => {
@@ -62,7 +89,7 @@ const Mirror = class Mirror {
         })
     }
 
-    updateTitle(title) {
+    updatePage(title) {
         return new Promise((resolve, reject) => {
             axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
                 params: {
@@ -70,7 +97,7 @@ const Mirror = class Mirror {
                     action: 'parse',
                     page: title,
                     prop: 'text',
-                    formatversion: 2
+                    formatversion: 2,
                 }
             }).then(({data}) => {
                 const {title, text} = data.parse
@@ -115,7 +142,7 @@ const Mirror = class Mirror {
             }).then(({data}) => {
                 const titles = data.query.allpages.map(({title}) => title)
                 const apcontinue = data.continue ? data.continue.apcontinue : null
-                Promise.all(titles.map((title) => this.updateTitle(title))).then((updatedPages) => {
+                Promise.all(titles.map((title) => this.updatePage(title))).then((updatedPages) => {
                     resolve({apcontinue, updatedPages})
                 }).catch((errors) => reject({error: errors}))
             }).catch((error) => {
@@ -163,7 +190,7 @@ const Mirror = class Mirror {
                 }
             }).then(({data}) => {
                 const titles = data.query.recentchanges.map(({title}) => title)
-                Promise.all(titles.map((title) => this.updateTitle(title))).then((updatedPages) => {
+                Promise.all(titles.map((title) => this.updatePage(title))).then((updatedPages) => {
                     resolve({updatedPages})
                 }).catch((errors) => reject({error: errors}))
             }).catch((error) => reject({error}))

@@ -14,15 +14,17 @@ if(args.length > 0) {
             const dir = (args.length > 1) ? args[1] : '.'
 
             const mirror = Mirror.init(url, dir)
-            mirror.writeMetadata()
+            mirror.updateMeta().then(() => mirror.writeMetadata())
         } else {
             console.log('main js init [url]')
         }
     } else if(command == 'fullupdate') {
         const dir = (args.length > 0) ? args[0] : '.'
+        const batch = (args.length > 1) ? parseInt(args[1]) : 100
+        const interval = (args.length > 2) ? parseInt(args[2]) : 1000
         const mirror = Mirror.load(dir)
         console.log(`full update started.`)
-        mirror.fullUpdate(1000, 10).then(({updatedPages}) => {
+        mirror.fullUpdate(interval, batch).then(({updatedPages}) => {
             console.log(`${updatedPages.length} pages updated.`)
             mirror.writeMetadata()
         }).catch(console.error)
