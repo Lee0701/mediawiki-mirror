@@ -20,9 +20,16 @@
             <div class="catlinks">
                 <span>{{ site.namespaces[14] }} : </span>
                 {% for category in page.categories %}
-                <a href="{{ category.url }}">{{ category.name }}</a>
+                    <a href="{{ category.url }}">{{ category.name }}</a>
                 {% endfor %}
             </div>
+            {% if page.members %}
+                <ul class="catmembers">
+                    {% for member in page.members %}
+                        <li><a href="{{ member.url }}">{{ member.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
             {{ page.content }}
         </main>
     </body>

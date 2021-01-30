@@ -115,26 +115,17 @@ const Mirror = class Mirror {
                     format: 'json',
                     action: 'parse',
                     page: title,
-                    prop: 'text',
+                    prop: 'text|categories',
                     formatversion: 2,
                 }
             })
-            const getCategories = axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-                params: {
-                    format: 'json',
-                    action: 'query',
-                    titles: title,
-                    prop: 'categories',
-                }
-            })
-            const promises = [getContent, getCategories]
+            const promises = [getContent]
             if(isCategory) promises.push(this.getCategoryMembers(title))
             Promise.all(promises).then((results) => {
                 const {title, text} = results[0].data.parse
-                const categories = (Object.values(results[1].data.query.pages)[0].categories || [])
-                        .map(({title}) => title)
+                const categories = results[0].data.parse.categories.map(({category}) => category)
                 const page = {title, text, categories}
-                if(isCategory && results.length > 2) page.members = results[2]
+                if(isCategory && results.length > 1) page.members = results[1]
                 this.writeRaw(title, page).then(() => {
                     this.buildPage(page).then(resolve).catch(reject)
                 }).catch((error) => reject({error}))
@@ -222,8 +213,10 @@ const Mirror = class Mirror {
             const title = rawPage.title
             const text = rawPage.text.toString()
             const categories = (rawPage.categories || [])
-                    .map((c) => ({name: c.slice(c.indexOf(':') + 1), url: `${this.config.baseUrl}/${encodeURIComponent(c)}`}))
-            const page = {title, content: text, categories}
+                    .map((c) => ({name: c, url: `${this.config.baseUrl}/${encodeURIComponent(this.config.namespaces[14] + ':' + c)}`}))
+            const members = (rawPage.members || [])
+                    .map((m) => ({name: m, url: `${this.config.baseUrl}/${encodeURIComponent(m)}`}))
+            const page = {title, content: text, categories, members}
             const $ = cheerio.load(text)
             const mwParserOutput = $('.mw-parser-output')
     
