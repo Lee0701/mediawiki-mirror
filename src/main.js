@@ -18,12 +18,21 @@ if(args.length > 0) {
         } else {
             console.log('main js init [url]')
         }
+    } else if(command == 'updatemeta') {
+        const dir = (args.length > 0) ? args[0] : '.'
+        const mirror = Mirror.load(dir)
+        mirror.updateMeta().then(() => {
+            console.log('Wiki metadata updated.')
+        }).catch(console.error)
     } else if(command == 'fullupdate') {
         const dir = (args.length > 0) ? args[0] : '.'
         const batch = (args.length > 1) ? parseInt(args[1]) : 100
         const interval = (args.length > 2) ? parseInt(args[2]) : 1000
         const mirror = Mirror.load(dir)
         console.log(`full update started.`)
+        mirror.updateMeta().then(() => {
+            console.log('Wiki metadata updated.')
+        }).catch(console.error)
         mirror.fullUpdateAllNamespaces(interval, batch).then(({updatedPages}) => {
             console.log(`${updatedPages.length} pages updated and built.`)
             mirror.writeMetadata()

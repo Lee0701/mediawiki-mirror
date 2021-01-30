@@ -6,6 +6,7 @@
   "scripts": {
     "serve": "node src/main.js serve",
     "init": "node src/main.js init",
+    "updatemeta": "node src/main.js updatemeta",
     "fullupdate": "node src/main.js fullupdate",
     "fullbuild": "node src/main.js fullbuild",
     "update": "node src/main.js update"

@@ -51,47 +51,66 @@ const Mirror = class Mirror {
                     format: 'json',
                     action: 'query',
                     meta: 'siteinfo',
-                    siprop: 'general|namespaces|namespacealiases',
+                    siprop: 'general|namespaces',
                 }
             }).then(({data}) => {
-                const {general, namespaces, namespacealiases} = data.query
-                this.config.mainPage = general.mainpage
-                const namespacesMap = {}
-                Object.values(namespaces).forEach((data) => {
-                    if(data.canonical) namespacesMap[data.canonical] = data.id
-                    if(data['*']) namespacesMap[data['*']] = data.id
-                })
-                namespacealiases.forEach((data) => {
-                    namespacesMap[data['*']] = data.id
-                })
-                this.config.namespaces = namespacesMap
+                const {general, namespaces} = data.query
+                Object.entries(namespaces).forEach(([key, value]) => namespaces[key] = value['*'])
 
+                this.config.mainPage = general.mainpage
+                this.config.namespaces = namespaces
                 resolve()
             }).catch((error) => reject({error}))
         })
     }
 
-    writeRaw(page) {
+    writeRaw(title, rawPage) {
         return new Promise((resolve, reject) => {
-            fs.writeFile(this.getRawPath(page.title), page.content, (error) => {
+            const content = JSON.stringify(rawPage, null, 2)
+            fs.writeFile(this.getRawPath(title), content, (error) => {
                 if(error) reject(error)
                 else resolve()
             })
         })
     }
 
-    writePage(page) {
+    writePage(title, content) {
         return new Promise((resolve, reject) => {
-            fs.writeFile(this.getPagePath(page.title), this.skin.formatIndex({site: this.config, page}), (error) => {
+            fs.writeFile(this.getPagePath(title), content, (error) => {
                 if(error) reject(error)
                 else resolve()
             })
+        })
+    }
+
+    getCategoryMembers(cmtitle) {
+        return new Promise((resolve, reject) => {
+            const members = []
+            const continueQuery = (cmcontinue) => {
+                axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                    params: {
+                        format: 'json',
+                        action: 'query',
+                        list: 'categorymembers',
+                        cmtitle,
+                        cmcontinue,
+                    }
+                }).then(({data}) => {
+                    const result = data.query.categorymembers.map(({title}) => title)
+                    members.push(...result)
+                    if(data.continue) continueQuery(data.continue.cmcontinue)
+                    else resolve(members)
+                }).catch(reject)
+            }
+            continueQuery()
         })
     }
 
     updatePage(title) {
         return new Promise((resolve, reject) => {
-            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+            const isCategory = title.indexOf(':') !== -1
+                    && title.slice(0, title.indexOf(':')) == this.config.namespaces[14]
+            const getContent = axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
                 params: {
                     format: 'json',
                     action: 'parse',
@@ -99,11 +118,25 @@ const Mirror = class Mirror {
                     prop: 'text',
                     formatversion: 2,
                 }
-            }).then(({data}) => {
-                const {title, text} = data.parse
-                const rawPage = {title, content: text}
-                this.writeRaw(rawPage).then(() => {
-                    this.buildPage(title).then(resolve).catch(reject)
+            })
+            const getCategories = axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                params: {
+                    format: 'json',
+                    action: 'query',
+                    titles: title,
+                    prop: 'categories',
+                }
+            })
+            const promises = [getContent, getCategories]
+            if(isCategory) promises.push(this.getCategoryMembers(title))
+            Promise.all(promises).then((results) => {
+                const {title, text} = results[0].data.parse
+                const categories = (Object.values(results[1].data.query.pages)[0].categories || [])
+                        .map(({title}) => title)
+                const page = {title, text, categories}
+                if(isCategory && results.length > 2) page.members = results[2]
+                this.writeRaw(title, page).then(() => {
+                    this.buildPage(page).then(resolve).catch(reject)
                 }).catch((error) => reject({error}))
             }).catch((error) => {
                 reject({error})
@@ -140,12 +173,8 @@ const Mirror = class Mirror {
             const update = (apcontinue) => {
                 this.updateBatch(batch, namespace, apcontinue).then(({apcontinue, updatedPages}) => {
                     pages.push(...updatedPages)
-                    if(apcontinue == null) {
-                        // this.titles = pages.map(({title}) => title)
-                        resolve({updatedPages: pages})
-                    } else {
-                        setTimeout(() => update(apcontinue), interval)
-                    }
+                    if(apcontinue) setTimeout(() => update(apcontinue), interval)
+                    else resolve({updatedPages: pages})
                 }).catch(({error}) => {
                     reject({error, updatedPages: pages})
                 })
@@ -188,30 +217,40 @@ const Mirror = class Mirror {
         })
     }
 
-    buildPage(title) {
+    buildPage(rawPage) {
+        return new Promise((resolve, reject) => {
+            const title = rawPage.title
+            const text = rawPage.text.toString()
+            const categories = (rawPage.categories || [])
+                    .map((c) => ({name: c.slice(c.indexOf(':') + 1), url: `${this.config.baseUrl}/${encodeURIComponent(c)}`}))
+            const page = {title, content: text, categories}
+            const $ = cheerio.load(text)
+            const mwParserOutput = $('.mw-parser-output')
+    
+            mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
+            mwParserOutput.find('a').attr('href', (_i, href) => {
+                if(!href) return
+                const replace = this.config.sourceWikiUrl
+                const to = this.config.baseUrl
+                if(href.slice(0, replace.length) == replace) {
+                    return to + href.slice(replace.length)
+                } else return href
+            })
+            page.content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
+            page.content = this.skin.formatIndex({site: this.config, page})
+    
+            this.writePage(title, page.content)
+                    .then(() => resolve(page))
+                    .catch((error) => reject({error}))
+        })
+    }
+
+    buildPageWithTitle(title) {
         return new Promise((resolve, reject) => {
             fs.readFile(this.getRawPath(title), (error, data) => {
                 if(error) reject(error)
                 else {
-                    const text = data.toString()
-                    const $ = cheerio.load(text)
-                    const mwParserOutput = $('.mw-parser-output')
-
-                    mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
-                    mwParserOutput.find('a').attr('href', (_i, href) => {
-                        if(!href) return
-                        const replace = this.config.sourceWikiUrl
-                        const to = this.config.baseUrl
-                        if(href.slice(0, replace.length) == replace) {
-                            return to + href.slice(replace.length)
-                        } else return href
-                    })
-                    const content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
-
-                    const page = {title, content}
-                    this.writePage(page)
-                            .then(() => resolve(page))
-                            .catch((error) => reject({error}))
+                    this.buildPage(JSON.parse(data)).then(resolve).catch(reject)
                 }
             })
         })
@@ -219,9 +258,19 @@ const Mirror = class Mirror {
 
     fullBuild() {
         return new Promise((resolve, reject) => {
-            Promise.all(this.titles.map((title) => this.buildPage(title)))
-                    .then((builtPages) => resolve({builtPages}))
-                    .catch(reject)
+            fs.readdir(path.join(this.dir, RAWS_PATHNAME), (error, list) => {
+                if(error) return reject(error)
+                else Promise.all(list.map((title) => new Promise((resolve, reject) => {
+                    fs.readFile(path.join(this.dir, RAWS_PATHNAME, title), (error, data) => {
+                        if(error) reject(error)
+                        else {
+                            this.buildPage(JSON.parse(data)).then(resolve).catch(reject)
+                        }
+                    })
+                }))).then((builtPages) => {
+                    resolve({builtPages})
+                }).catch(reject)
+            })
         })
     }
 
@@ -230,7 +279,7 @@ const Mirror = class Mirror {
     }
 
     getRawPath(title) {
-        return path.join(this.dir, RAWS_PATHNAME, `${this.escapeTitle(title)}.txt`)
+        return path.join(this.dir, RAWS_PATHNAME, `${this.escapeTitle(title)}.json`)
     }
 
     getPagePath(title) {
@@ -248,16 +297,6 @@ const Mirror = class Mirror {
         const path = this.getPagePath(title)
         if(!fs.existsSync(path)) return null
         return fs.readFileSync(path).toString()
-    }
-
-    getNamespace(title) {
-        const split = title.split(':')
-        if(split.length > 1) return this.config.namespaces[split[0]] || 0
-        else return 0
-    }
-
-    getAllNamespaces() {
-        return Object.values(this.config.namespaces).filter((v, i, arr) => arr.indexOf(v) === i)
     }
 
 }
