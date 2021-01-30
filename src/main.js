@@ -25,7 +25,7 @@ if(args.length > 0) {
         const mirror = Mirror.load(dir)
         console.log(`full update started.`)
         mirror.fullUpdate(interval, batch).then(({updatedPages}) => {
-            console.log(`${updatedPages.length} pages updated.`)
+            console.log(`${updatedPages.length} pages updated and built.`)
             mirror.writeMetadata()
         }).catch(console.error)
     } else if(command == 'update') {
@@ -53,6 +53,9 @@ if(args.length > 0) {
         app.get('/', (req, res) => {
             res.redirect(`${prefix}/${mirror.config.mainPage}`)
         })
+        app.get(`/index.php`, (req, res) => {
+            res.redirect(new URL(req.url, mirror.config.sourceUrl).href)
+        })
         app.get(`${prefix}*`, (req, res) => {
             const url = decodeURIComponent(req.url.slice(prefix.length))
             console.log(url)
@@ -61,9 +64,6 @@ if(args.length > 0) {
             const content = mirror.getPageContent(title)
             if(content === null) res.status(404).send('404')
             else res.status(200).send(content)
-        })
-        app.get(`/index.php`, (req, res) => {
-            res.redirect(new URL(req.url, mirror.config.url).href)
         })
         app.listen(port)
     } else {

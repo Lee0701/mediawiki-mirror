@@ -103,24 +103,7 @@ const Mirror = class Mirror {
                 const {title, text} = data.parse
                 const rawPage = {title, content: text}
                 this.writeRaw(rawPage).then(() => {
-                    const $ = cheerio.load(text)
-                    const mwParserOutput = $('.mw-parser-output')
-
-                    mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
-                    mwParserOutput.find('a').attr('href', (_i, href) => {
-                        if(!href) return
-                        const replace = this.config.sourceWikiUrl
-                        const to = this.config.baseUrl
-                        if(href.slice(0, replace.length) == replace) {
-                            return to + href.slice(replace.length)
-                        } else return href
-                    })
-                    const content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
-
-                    const page = {title, content}
-                    this.writePage(page)
-                            .then(() => resolve(page))
-                            .catch((error) => reject({error}))
+                    this.buildPage(title).then(resolve).catch(reject)
                 }).catch((error) => reject({error}))
             }).catch((error) => {
                 reject({error})
@@ -202,8 +185,25 @@ const Mirror = class Mirror {
             fs.readFile(this.getRawPath(title), (error, data) => {
                 if(error) reject(error)
                 else {
-                    const content = data.toString()
-                    this.writePage({title, content}).then(() => resolve({title, content})).catch(reject)
+                    const text = data.toString()
+                    const $ = cheerio.load(text)
+                    const mwParserOutput = $('.mw-parser-output')
+
+                    mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
+                    mwParserOutput.find('a').attr('href', (_i, href) => {
+                        if(!href) return
+                        const replace = this.config.sourceWikiUrl
+                        const to = this.config.baseUrl
+                        if(href.slice(0, replace.length) == replace) {
+                            return to + href.slice(replace.length)
+                        } else return href
+                    })
+                    const content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
+
+                    const page = {title, content}
+                    this.writePage(page)
+                            .then(() => resolve(page))
+                            .catch((error) => reject({error}))
                 }
             })
         })
