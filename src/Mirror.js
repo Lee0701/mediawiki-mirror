@@ -10,9 +10,9 @@ const Skin = require('./Skin')
 const API_ENDPOINT = '/api.php'
 
 const MIRROR_CONFIG_FILENAME = 'mirror.json'
-const TITLES_FILENAME = 'titles.txt'
-const PAGES_PATHNAME = 'pages'
 const RAWS_PATHNAME = 'raws'
+const PAGES_PATHNAME = 'pages'
+const IMAGES_PATHNAME = 'images'
 
 const Mirror = class Mirror {
 
@@ -20,30 +20,17 @@ const Mirror = class Mirror {
         this.config = config
         this.dir = dir
         this.skin = new Skin(path.join(this.dir, config.skinPath))
-        this.titles = []
-        this.readTitles()
     }
 
     writeConfig() {
         if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir)
         fs.writeFileSync(path.join(this.dir, MIRROR_CONFIG_FILENAME), this.config.json())
     }
-
-    writeTitles() {
-        if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir)
-        fs.writeFileSync(path.join(this.dir, TITLES_FILENAME), this.titles.join('\n'))
-    }
     
     writeMetadata() {
         this.writeConfig()
-        this.writeTitles()
     }
-
-    readTitles() {
-        if(!fs.existsSync(path.join(this.dir, TITLES_FILENAME))) return
-        this.titles = fs.readFileSync(path.join(this.dir, TITLES_FILENAME)).toString().split('\n')
-    }
-
+    
     updateMeta() {
         return new Promise((resolve, reject) => {
             axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
@@ -66,8 +53,10 @@ const Mirror = class Mirror {
 
     writeRaw(title, rawPage) {
         return new Promise((resolve, reject) => {
+            const rawPath = this.getRawPath(title)
             const content = JSON.stringify(rawPage, null, 2)
-            fs.writeFile(this.getRawPath(title), content, (error) => {
+            fs.mkdirSync(path.dirname(rawPath), {recursive: true})
+            fs.writeFile(rawPath, content, (error) => {
                 if(error) reject(error)
                 else resolve()
             })
@@ -76,7 +65,9 @@ const Mirror = class Mirror {
 
     writePage(title, content) {
         return new Promise((resolve, reject) => {
-            fs.writeFile(this.getPagePath(title), content, (error) => {
+            const pagePath = this.getPagePath(title)
+            fs.mkdirSync(path.dirname(pagePath), {recursive: true})
+            fs.writeFile(pagePath, content, (error) => {
                 if(error) reject(error)
                 else resolve()
             })
@@ -167,15 +158,28 @@ const Mirror = class Mirror {
         })
     }
 
-    fullUpdate(namespace, interval, batch) {
+    fullUpdatePages(namespace, interval, batch) {
         return new Promise((resolve, reject) => {
             const pages = []
             const update = (apcontinue) => {
-                this.updateBatch(batch, namespace, apcontinue).then(({apcontinue, updatedPages}) => {
-                    pages.push(...updatedPages)
-                    if(apcontinue) setTimeout(() => update(apcontinue), interval)
-                    else resolve({updatedPages: pages})
-                }).catch(({error}) => {
+                axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                    params: {
+                        format: 'json',
+                        action: 'query',
+                        list: 'allpages',
+                        aplimit: batch,
+                        apnamespace: namespace,
+                        apcontinue,
+                    }
+                }).then(({data}) => {
+                    const titles = data.query.allpages.map(({title}) => title)
+                    const apcontinue = data.continue ? data.continue.apcontinue : null
+                    Promise.all(titles.map((title) => this.updatePage(title))).then((updatedPages) => {
+                        pages.push(...updatedPages)
+                        if(apcontinue) setTimeout(() => update(apcontinue), interval)
+                        else resolve({updatedPages: pages})
+                    }).catch((errors) => reject({error: errors, updatedPages: pages}))
+                }).catch((error) => {
                     reject({error, updatedPages: pages})
                 })
             }
@@ -186,11 +190,16 @@ const Mirror = class Mirror {
     fullUpdateAllNamespaces(interval, batch) {
         this.config.lastUpdate = new Date().getTime()
         this.mkdirs()
-        return new Promise((resolve, reject) => {
-            const promises = this.config.pageNamespaces.map((namespace) => this.fullUpdate(namespace, interval, batch))
-            Promise.all(promises).then((result) => {
-                resolve({updatedPages: result.map(({updatedPages}) => updatedPages).flat()})
-            }).catch(reject)
+        return new Promise(async (resolve, reject) => {
+            const updatedPages = []
+            try {
+                for(let namespace of this.config.pageNamespaces) {
+                    updatedPages.push(...(await this.fullUpdatePages(namespace, interval, batch)).updatedPages)
+                }
+                resolve({updatedPages})
+            } catch(error) {
+                reject({error, updatedPages})
+            }
         })
     }
 
@@ -219,14 +228,19 @@ const Mirror = class Mirror {
 
     buildPage(rawPage) {
         return new Promise((resolve, reject) => {
+            const pagesBaseUrl = this.config.baseUrl + '/' + PAGES_PATHNAME
+            const imagesBaseUrl = this.config.baseUrl + '/' + IMAGES_PATHNAME
+
             const title = rawPage.title
             const text = rawPage.text.toString()
+
             const categories = (rawPage.categories || []).map((c) => ({
                 name: c.slice(c.indexOf(':') + 1),
-                url: `${this.config.baseUrl}/${encodeURIComponent(c)}`
+                url: `${pagesBaseUrl}/${encodeURIComponent(c)}`
             }))
             const members = (rawPage.members || [])
-                    .map((m) => ({name: m, url: `${this.config.baseUrl}/${encodeURIComponent(m)}`}))
+                    .map((m) => ({name: m, url: `${pagesBaseUrl}/${encodeURIComponent(m)}`}))
+            
             const page = {title, content: text, categories, members}
             const $ = cheerio.load(text)
             const mwParserOutput = $('.mw-parser-output')
@@ -236,13 +250,22 @@ const Mirror = class Mirror {
                 if(!href) return
                 if(href.charAt(0) !== '/') href = '/' + href
                 const replace = this.config.sourceWikiUrl
-                const to = this.config.baseUrl
+                const to = pagesBaseUrl
                 const indexPhp = '/index.php'
                 if(href.slice(0, replace.length) == replace) {
                     return to + href.slice(replace.length)
                 } else if(href.slice(0, indexPhp.length) == indexPhp) {
                     return new URL(href, this.config.sourceUrl).href
                 } else return href
+            })
+            mwParserOutput.find('img').attr('src', (_i, src) => {
+                if(!src) return
+                if(src.charAt(0) !== '/') src = '/' + src
+                const replace = this.config.sourceImagesUrl
+                const to = imagesBaseUrl
+                if(src.slice(0, replace.length) == replace) {
+                    return to + src.slice(replace.length)
+                } else return src
             })
             page.content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
             page.content = this.skin.formatIndex({site: this.config, page})
@@ -268,30 +291,96 @@ const Mirror = class Mirror {
         return new Promise((resolve, reject) => {
             fs.readdir(path.join(this.dir, RAWS_PATHNAME), (error, list) => {
                 if(error) return reject(error)
-                else Promise.all(list.map((title) => new Promise((resolve, reject) => {
-                    fs.readFile(path.join(this.dir, RAWS_PATHNAME, title), (error, data) => {
-                        if(error) reject(error)
-                        else {
-                            this.buildPage(JSON.parse(data)).then(resolve).catch(reject)
-                        }
-                    })
-                }))).then((builtPages) => {
-                    resolve({builtPages})
-                }).catch(reject)
+                else {
+                    list = list.map((title) => path.join(this.dir, RAWS_PATHNAME, title))
+                    list = list.filter((rawPath) => !fs.statSync(rawPath).isDirectory())
+                    Promise.all(list.map((rawPath) => new Promise((resolve, reject) => {
+                        fs.readFile(rawPath, (error, data) => {
+                            if(error) reject(error)
+                            else {
+                                this.buildPage(JSON.parse(data)).then(resolve).catch(reject)
+                            }
+                        })
+                    }))).then((builtPages) => {
+                        resolve({builtPages})
+                    }).catch(reject)
+                }
             })
         })
     }
 
-    escapeTitle(title) {
-        return title.replace(/\$/g, '$$').replace(/\//g, '$s')
+    downloadImage(sourceUrl, destPath) {
+        return new Promise((resolve, reject) => {
+            axios.get(sourceUrl, {
+                responseType: 'stream',
+            }).then(({data}) => {
+                fs.mkdirSync(path.dirname(destPath), {recursive: true})
+                const writer = fs.createWriteStream(destPath)
+                data.pipe(writer)
+                writer.on('finish', resolve)
+                writer.on('error', reject)
+            }).catch(reject)
+        })
+    }
+
+    updateImage(title) {
+        return new Promise((resolve, reject) => {
+            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                params: {
+                    format: 'json',
+                    action: 'query',
+                    titles: title,
+                    prop: 'imageinfo',
+                    iiprop: 'url',
+                }
+            }).then(({data}) => {
+                const sourceUrl = Object.values(data.query.pages)[0].imageinfo[0].url
+                const destUrl = sourceUrl.slice(new URL('images', this.config.sourceUrl).href.length)
+                const destPath = this.getImagePath(destUrl)
+                console.log(destUrl)
+                this.downloadImage(sourceUrl, destPath).then(resolve).catch(reject)
+            }).catch((error) => reject({error}))
+        })
+    }
+
+    fullUpdateImages(interval, batch) {
+        return new Promise((resolve, reject) => {
+            const images = []
+            const update = (aicontinue) => {
+                axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                    params: {
+                        format: 'json',
+                        action: 'query',
+                        list: 'allimages',
+                        ailimit: batch,
+                        aicontinue,
+                    }
+                }).then(({data}) => {
+                    const titles = data.query.allimages.map(({title}) => title)
+                    const aicontinue = data.continue ? data.continue.aicontinue : null
+                    Promise.all(titles.map((title) => this.updateImage(title))).then((updatedImages) => {
+                        images.push(...updatedImages)
+                        if(aicontinue) setTimeout(() => update(aicontinue), interval)
+                        else resolve({updatedImages: images})
+                    }).catch((errors) => reject({error: errors, updatedImages: images}))
+                }).catch((error) => {
+                    reject({error, updatedImages: images})
+                })
+            }
+            update()
+        })
     }
 
     getRawPath(title) {
-        return path.join(this.dir, RAWS_PATHNAME, `${this.escapeTitle(title)}.json`)
+        return path.join(this.dir, RAWS_PATHNAME, `${title}.json`)
     }
 
     getPagePath(title) {
-        return path.join(this.dir, PAGES_PATHNAME, `${this.escapeTitle(title)}.html`)
+        return path.join(this.dir, PAGES_PATHNAME, `${title}.html`)
+    }
+
+    getImagePath(imagePath) {
+        return path.join(this.dir, IMAGES_PATHNAME, imagePath)
     }
 
     mkdirs() {
@@ -305,6 +394,12 @@ const Mirror = class Mirror {
         const path = this.getPagePath(title)
         if(!fs.existsSync(path)) return null
         return fs.readFileSync(path).toString()
+    }
+
+    getImage(imagePath) {
+        imagePath = path.join(this.dir, IMAGES_PATHNAME, imagePath)
+        if(!fs.existsSync(imagePath)) return null
+        return fs.readFileSync(imagePath)
     }
 
 }
