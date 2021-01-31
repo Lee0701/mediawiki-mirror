@@ -11,6 +11,8 @@ const Skin = require('./Skin')
 const API_ENDPOINT = '/api.php'
 
 const MIRROR_CONFIG_FILENAME = 'mirror.json'
+const RAW_FILE_EXTENSION = '.json'
+const RAW_TEXT_FILE_EXTENSION = '.txt'
 
 const Mirror = class Mirror {
 
@@ -57,20 +59,17 @@ const Mirror = class Mirror {
         this.config.mainPage = '/' + general.mainpage
         this.config.namespaces = namespaces
 
-        this.writeRaw({title: "index", text: `<div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div>`})
+        await this.writeRawPage({title: "index", text: `<div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div>`})
 
     }
 
-    writeRaw(rawPage) {
-        return new Promise((resolve, reject) => {
-            const rawPath = this.getRawPath(rawPage.title)
-            const content = JSON.stringify(rawPage, null, 2)
-            fs.mkdirSync(path.dirname(rawPath), {recursive: true})
-            fs.writeFile(rawPath, content, (error) => {
-                if(error) reject(error)
-                else resolve()
-            })
-        })
+    async writeRawPage(rawPage) {
+        const path = this.getRawPath(rawPage.title)
+        const textPath = this.getRawTextPath(rawPage.title)
+        const {title, categories, members, text} = rawPage
+        const content = {title, categories, members}
+        fs.writeFileSync(path, JSON.stringify(content))
+        fs.writeFileSync(textPath, text)
     }
 
     writePage(title, content) {
@@ -150,7 +149,7 @@ const Mirror = class Mirror {
                 this.downloadImage(sourceUrl.href, destPath)
             })
         }
-        await this.writeRaw(page)
+        await this.writeRawPage(page)
         await this.buildPage(page)
         return page
     }
@@ -244,7 +243,7 @@ const Mirror = class Mirror {
     }
 
     async buildPageWithTitle(title) {
-        const data = fs.readFileSync(this.getRawPath(title))
+        const data = this.readRawPage(title)
         return await this.buildPage(JSON.parse(data)).then(resolve).catch(reject)
     }
 
@@ -322,12 +321,28 @@ const Mirror = class Mirror {
         return combineURLs(this.imagesBaseUrl, title)
     }
 
+    readRawPage(title) {
+        const path = getRawPath(title)
+        const textPath = getRawTextPath(title)
+        const rawPage = JSON.parse(fs.readFileSync(path))
+        rawPage.text = fs.readFileSync(textPath).toString()
+        return rawPage
+    }
+
     getRawPath(title) {
-        return path.join(this.dir, this.config.rawsPath, `${title}.json`)
+        return this.getPath(title, this.config.rawsPath, RAW_FILE_EXTENSION)
+    }
+
+    getRawTextPath(title) {
+        return this.getPath(title, this.config.rawsPath, RAW_TEXT_FILE_EXTENSION)
     }
 
     getPagePath(title) {
-        return path.join(this.dir, this.config.pagesPath, `${title}.html`)
+        return this.getPath(title, this.config.pagesPath, this.config.pageExtension)
+    }
+
+    getPath(title, basePath, extension) {
+        return path.join(this.dir, basePath, `${title}${extension}`)
     }
 
     getImagePath(sourceUrl) {
