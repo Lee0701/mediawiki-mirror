@@ -13,8 +13,12 @@ const MirrorConfig = class MirrorConfig {
         this.title = title
         this.baseUrl = ''
         this.skinPath = 'skin'
-
         this.lastUpdate = 0
+
+        this.rawsPath = '/raw'
+        this.pagesPath = '/wiki'
+        this.imagesPath = '/images'
+        this.pageExtension = '.html'
     }
     json() {
         return JSON.stringify(this, null, 2)
@@ -34,6 +38,11 @@ MirrorConfig.load = function(file) {
     if(json.baseUrl) config.baseUrl = json.baseUrl
     if(json.skinPath) config.skinPath = json.skinPath
     if(json.lastUpdate) config.lastUpdate = json.lastUpdate
+
+    if(json.rawsPath) config.rawsPath = json.rawsPath
+    if(json.pagesPath) config.pagesPath = json.pagesPath
+    if(json.imagesPath) config.imagesPath = json.imagesPath
+    if(json.pageExtension) config.pageExtension = json.pageExtension
     
     return config
 }

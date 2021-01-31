@@ -2,6 +2,7 @@
 const fs = require('fs')
 const path = require('path')
 const axios = require('axios')
+const combineURLs = require('axios/lib/helpers/combineURLs')
 const cheerio = require('cheerio')
 
 const MirrorConfig = require('./MirrorConfig')
@@ -10,10 +11,6 @@ const Skin = require('./Skin')
 const API_ENDPOINT = '/api.php'
 
 const MIRROR_CONFIG_FILENAME = 'mirror.json'
-const PAGE_EXTENSION = '.html'
-const RAWS_PATHNAME = 'raws'
-const PAGES_PATHNAME = 'wiki'
-const IMAGES_PATHNAME = 'images'
 
 const Mirror = class Mirror {
 
@@ -25,8 +22,8 @@ const Mirror = class Mirror {
             baseURL: this.config.sourceUrl,
         })
 
-        this.pagesBaseUrl = this.config.baseUrl + '/' + PAGES_PATHNAME
-        this.imagesBaseUrl = this.config.baseUrl + '/' + IMAGES_PATHNAME
+        this.pagesBaseUrl = this.config.baseUrl + this.config.pagesPath
+        this.imagesBaseUrl = this.config.baseUrl + '/' + this.config.imagesPath
     }
 
     sleep(duration) {
@@ -36,7 +33,7 @@ const Mirror = class Mirror {
     }
 
     writeConfig() {
-        if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir)
+        if(!fs.existsSync(this.dir)) fs.mkdirSync(this.dir, { recursive: true })
         fs.writeFileSync(path.join(this.dir, MIRROR_CONFIG_FILENAME), this.config.json())
     }
     
@@ -45,6 +42,7 @@ const Mirror = class Mirror {
     }
     
     async updateMeta() {
+        this.mkdirs()
         const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
             params: {
                 format: 'json',
@@ -58,6 +56,8 @@ const Mirror = class Mirror {
 
         this.config.mainPage = general.mainpage
         this.config.namespaces = namespaces
+
+        this.writeRaw({title: "index", text: `<div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div>`})
 
     }
 
@@ -150,7 +150,7 @@ const Mirror = class Mirror {
                 this.downloadImage(sourceUrl.href, destPath)
             })
         }
-        await this.writeRaw(title, page)
+        await this.writeRaw(page)
         await this.buildPage(page)
         return page
     }
@@ -178,8 +178,8 @@ const Mirror = class Mirror {
     }
 
     async fullUpdateAllNamespaces(interval, batch) {
-        this.config.lastUpdate = new Date().getTime()
         this.mkdirs()
+        this.config.lastUpdate = new Date().getTime()
         const result = []
         for(let namespace of this.config.pageNamespaces) {
             result.push(...await this.fullUpdatePages(namespace, interval, batch))
@@ -188,6 +188,7 @@ const Mirror = class Mirror {
     }
 
     async updatePages(interval, batch, images) {
+        this.mkdirs()
         const rcnamespace = this.config.pageNamespaces.join('|')
         const rcend = Math.floor(this.config.lastUpdate / 1000) // //milliseconds to seconds
         this.config.lastUpdate = new Date().getTime()
@@ -217,11 +218,11 @@ const Mirror = class Mirror {
         const text = rawPage.text.toString()
 
         const categories = (rawPage.categories || []).map((category) => ({
-            name: category.split(':')[0],
-            url: this.processLink(category)
+            name: category.split(':')[1],
+            url: this.makeLink(category)
         }))
         const members = (rawPage.members || [])
-                .map((m) => ({name: m, url: `${this.pagesBaseUrl}/${encodeURIComponent(m)}`}))
+                .map((m) => ({name: m, url: this.makeLink(m)}))
         
         const page = {title, content: text, categories, members}
         const $ = cheerio.load(text)
@@ -248,8 +249,8 @@ const Mirror = class Mirror {
     }
 
     async fullBuild() {
-        let list = fs.readdirSync(path.join(this.dir, RAWS_PATHNAME))
-        list = list.map((title) => path.join(this.dir, RAWS_PATHNAME, title))
+        let list = fs.readdirSync(path.join(this.dir, this.config.rawsPath))
+        list = list.map((title) => path.join(this.dir, this.config.rawsPath, title))
         list = list.filter((rawPath) => !fs.statSync(rawPath).isDirectory())
         return list.map(async (rawPath) => {
             const data = fs.readFileSync(rawPath)
@@ -273,6 +274,7 @@ const Mirror = class Mirror {
     }
 
     async fullUpdateImages(interval, batch) {
+        this.mkdirs()
         const updatedImages = []
         let aicontinue = null
         do {
@@ -298,10 +300,14 @@ const Mirror = class Mirror {
         const url = new URL(href, this.config.sourceUrl)
         const path = url.pathname.split('/')
         if(path.slice(0, 2).join('/') == this.config.sourceWikiUrl) {
-            return path.join('/') + PAGE_EXTENSION
+            return path.join('/') + this.config.pageExtension
         } else if(href.slice(0, indexPhp.length) == indexPhp) {
             return url.href
         } else return href
+    }
+
+    makeLink(title) {
+        return combineURLs(this.pagesBaseUrl, title + this.config.pageExtension)
     }
 
     processImageSrc(src) {
@@ -313,22 +319,25 @@ const Mirror = class Mirror {
     }
 
     getRawPath(title) {
-        return path.join(this.dir, RAWS_PATHNAME, `${title}.json`)
+        return path.join(this.dir, this.config.rawsPath, `${title}.json`)
     }
 
     getPagePath(title) {
-        return path.join(this.dir, PAGES_PATHNAME, `${title}.html`)
+        return path.join(this.dir, this.config.pagesPath, `${title}.html`)
     }
 
     getImagePath(sourceUrl) {
-        return path.join(this.dir, IMAGES_PATHNAME, sourceUrl.pathname.split('/').slice(2).join('/'))
+        return path.join(this.dir, this.config.imagesPath, sourceUrl.pathname.split('/').slice(2).join('/'))
     }
 
     mkdirs() {
-        const pages = path.join(this.dir, PAGES_PATHNAME)
-        if(!fs.existsSync(pages)) fs.mkdirSync(pages)
-        const raws = path.join(this.dir, RAWS_PATHNAME)
-        if(!fs.existsSync(raws)) fs.mkdirSync(raws)
+        const pages = path.join(this.dir, this.config.pagesPath)
+        if(!fs.existsSync(pages)) fs.mkdirSync(pages, { recursive: true })
+        const raws = path.join(this.dir, this.config.rawsPath)
+        if(!fs.existsSync(raws)) fs.mkdirSync(raws, { recursive: true })
+        const images = path.join(this.dir, this.config.imagesPath)
+        if(!fs.existsSync(images)) fs.mkdirSync(images, { recursive: true })
+        
     }
 
 }
