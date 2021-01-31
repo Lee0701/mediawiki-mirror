@@ -7,6 +7,7 @@ const cheerio = require('cheerio')
 
 const MirrorConfig = require('./MirrorConfig')
 const Skin = require('./Skin')
+const { parse } = require('path')
 
 const API_ENDPOINT = '/api.php'
 
@@ -64,18 +65,20 @@ const Mirror = class Mirror {
     }
 
     async writeRawPage(rawPage) {
-        const path = this.getRawPath(rawPage.title)
-        const textPath = this.getRawTextPath(rawPage.title)
+        const rawPath = this.getRawPath(rawPage.title)
+        const rawTextPath = this.getRawTextPath(rawPage.title)
+        this.mkdir(rawPath)
+        this.mkdir(rawTextPath)
         const {title, categories, members, text} = rawPage
         const content = {title, categories, members}
-        fs.writeFileSync(path, JSON.stringify(content))
-        fs.writeFileSync(textPath, text)
+        fs.writeFileSync(rawPath, JSON.stringify(content))
+        fs.writeFileSync(rawTextPath, text)
     }
 
     writePage(title, content) {
         return new Promise((resolve, reject) => {
             const pagePath = this.getPagePath(title)
-            fs.mkdirSync(path.dirname(pagePath), {recursive: true})
+            this.mkdir(pagePath)
             fs.writeFile(pagePath, content, (error) => {
                 if(error) reject(error)
                 else resolve()
@@ -88,7 +91,7 @@ const Mirror = class Mirror {
             axios.get(sourceUrl, {
                 responseType: 'stream',
             }).then(({data}) => {
-                fs.mkdirSync(path.dirname(destPath), {recursive: true})
+                this.mkdir(destPath)
                 const writer = fs.createWriteStream(destPath)
                 data.pipe(writer)
                 writer.on('finish', resolve)
@@ -139,16 +142,17 @@ const Mirror = class Mirror {
         const categories = (Object.values(categoriesResult.data.query.pages)[0].categories || []).map(({title}) => title)
         if(!data.parse) return null
         const {text} = data.parse
-        const page = {title, text, categories}
-        if(isCategory) page.members = await this.getCategoryMembers(title)
+        const $ = cheerio.load(text)
+        $('*').contents().filter((_i, {type}) => type === 'comment').remove()
         if(images) {
-            const $ = cheerio.load(text)
             $('img').each(async (_i, img) => {
                 const sourceUrl = new URL(img.attribs['src'], this.config.sourceUrl)
                 const destPath = this.getImagePath(sourceUrl)
                 this.downloadImage(sourceUrl.href, destPath)
             })
         }
+        const page = {title, text: $.html().replace(/\n+/g, '\n'), categories}
+        if(isCategory) page.members = await this.getCategoryMembers(title)
         await this.writeRawPage(page)
         await this.buildPage(page)
         return page
@@ -227,7 +231,6 @@ const Mirror = class Mirror {
         const $ = cheerio.load(text)
         const mwParserOutput = $('.mw-parser-output')
 
-        mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
         mwParserOutput.find('a').attr('href', (_i, href) => {
             if(!href) return
             return this.processLink(href)
@@ -248,13 +251,14 @@ const Mirror = class Mirror {
     }
 
     async fullBuild() {
-        let list = fs.readdirSync(path.join(this.dir, this.config.rawsPath))
-        list = list.map((title) => path.join(this.dir, this.config.rawsPath, title))
-        list = list.filter((rawPath) => !fs.statSync(rawPath).isDirectory())
-        return list.map(async (rawPath) => {
-            const data = fs.readFileSync(rawPath)
-            return await this.buildPage(JSON.parse(data))
-        })
+        const list = fs.readdirSync(path.join(this.dir, this.config.rawsPath))
+                .map((title) => [path.join(this.dir, this.config.rawsPath, title), title])
+                .filter(([rawPath]) => !fs.statSync(rawPath).isDirectory() && rawPath.endsWith(RAW_FILE_EXTENSION))
+                .map(([_rawPath, fileName]) => fileName)
+        return list.map(async (fileName) => {
+            const data = this.readRawPage(fileName.slice(0, -RAW_FILE_EXTENSION.length))
+            return await this.buildPage(data)
+        }).filter((page) => page)
     }
 
     async updateImage(title) {
@@ -322,8 +326,8 @@ const Mirror = class Mirror {
     }
 
     readRawPage(title) {
-        const path = getRawPath(title)
-        const textPath = getRawTextPath(title)
+        const path = this.getRawPath(title)
+        const textPath = this.getRawTextPath(title)
         const rawPage = JSON.parse(fs.readFileSync(path))
         rawPage.text = fs.readFileSync(textPath).toString()
         return rawPage
@@ -356,7 +360,11 @@ const Mirror = class Mirror {
         if(!fs.existsSync(raws)) fs.mkdirSync(raws, { recursive: true })
         const images = path.join(this.dir, this.config.imagesPath)
         if(!fs.existsSync(images)) fs.mkdirSync(images, { recursive: true })
-        
+    }
+    
+    mkdir(filePath) {
+        const dirName = path.dirname(filePath)
+        if(!fs.existsSync(dirName)) fs.mkdirSync(dirName, { recursive: true })
     }
 
 }
