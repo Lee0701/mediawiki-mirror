@@ -14,7 +14,7 @@ const MirrorConfig = class MirrorConfig {
             title: title,
             mainPage: '/MainPage',
             baseUrl: '',
-            license: {
+            rights: {
                 url: '',
                 image: '',
                 text: '',

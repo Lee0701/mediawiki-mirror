@@ -51,13 +51,15 @@ const Mirror = class Mirror {
                 format: 'json',
                 action: 'query',
                 meta: 'siteinfo',
-                siprop: 'general|namespaces',
+                siprop: 'general|namespaces|rightsinfo',
             }
         })
-        const {general, namespaces} = data.query
+        const {general, namespaces, rightsinfo} = data.query
         Object.entries(namespaces).forEach(([key, value]) => namespaces[key] = value['*'])
+        if(rightsinfo.url) this.config.meta.rights.url = rightsinfo.url
+        if(rightsinfo.text) this.config.meta.rights.text = rightsinfo.text
 
-        this.config.mainPage = '/' + general.mainpage
+        this.config.meta.mainPage = '/' + general.mainpage
         this.config.namespace.names = namespaces
 
         await this.writeRawPage({title: "index", text: `<html><body><div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div></body></html>`})
