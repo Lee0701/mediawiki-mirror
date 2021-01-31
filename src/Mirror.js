@@ -54,7 +54,7 @@ const Mirror = class Mirror {
         const {general, namespaces} = data.query
         Object.entries(namespaces).forEach(([key, value]) => namespaces[key] = value['*'])
 
-        this.config.mainPage = general.mainpage
+        this.config.mainPage = '/' + general.mainpage
         this.config.namespaces = namespaces
 
         this.writeRaw({title: "index", text: `<div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div>`})
