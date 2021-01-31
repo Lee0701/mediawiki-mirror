@@ -6,6 +6,9 @@ const args = process.argv.slice(2)
 
 const usage = () => 'main.js [init|fullupdate|fullbuild|serve]'
 
+const DEFAULT_BATCH = 20
+const DEFAULT_INTERVAL = 500
+
 if(args.length > 0) {
     const command = args.shift()
     if(command == 'init') {
@@ -30,8 +33,8 @@ if(args.length > 0) {
         if(args.length > 0) {
             const type = args[0]
             const dir = (args.length > 1) ? args[1] : '.'
-            const batch = (args.length > 2) ? parseInt(args[2]) : 20
-            const interval = (args.length > 3) ? parseInt(args[3]) : 1000
+            const batch = (args.length > 2) ? parseInt(args[2]) : DEFAULT_BATCH
+            const interval = (args.length > 3) ? parseInt(args[3]) : DEFAULT_INTERVAL
             const mirror = Mirror.load(dir)
             console.log(`Full update started.`)
             mirror.updateMeta().then(() => {
@@ -53,10 +56,12 @@ if(args.length > 0) {
         if(args.length > 0) {
             const type = args[0]
             const dir = (args.length > 1) ? args[1] : '.'
+            const batch = (args.length > 2) ? parseInt(args[2]) : DEFAULT_BATCH
+            const interval = (args.length > 3) ? parseInt(args[3]) : DEFAULT_INTERVAL
             const mirror = Mirror.load(dir)
             console.log(`update started.`)
             if(type == 'pages') {
-                mirror.updatePages().then((updatedPages) => {
+                mirror.updatePages(batch, interval, true).then((updatedPages) => {
                     console.log(`${updatedPages.length} pages updated.`)
                     mirror.writeMetadata()
                 }).catch(console.error)

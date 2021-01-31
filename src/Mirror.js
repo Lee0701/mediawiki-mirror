@@ -23,7 +23,6 @@ const Mirror = class Mirror {
         this.skin = new Skin(path.join(this.dir, config.skinPath))
         this.axios = axios.create({
             baseURL: this.config.sourceUrl,
-            timeout: 5000,
         })
 
         this.pagesBaseUrl = this.config.baseUrl + '/' + PAGES_PATHNAME
@@ -152,10 +151,11 @@ const Mirror = class Mirror {
             })
         }
         await this.writeRaw(title, page)
-        return await this.buildPage(page)
+        await this.buildPage(page)
+        return page
     }
 
-    async fullUpdatePages(namespace, interval, batch) {
+    async fullUpdatePages(namespace, interval, batch, images=true) {
         const updatedPages = []
         let apcontinue = null
         do {
@@ -171,9 +171,10 @@ const Mirror = class Mirror {
             })
             const titles = data.query.allpages.map(({title}) => title)
             apcontinue = data.continue ? data.continue.apcontinue : null
-            updatedPages.push(await Promise.all(titles.map((title) => this.updatePage(title)).filter((page) => page)))
-        } while (apcontinue)
-        return updatedPages
+            updatedPages.push(...await Promise.all(titles.map((title) => this.updatePage(title, images))))
+            await this.sleep(interval)
+        } while(apcontinue)
+        return updatedPages.filter((page) => page)
     }
 
     async fullUpdateAllNamespaces(interval, batch) {
@@ -186,22 +187,29 @@ const Mirror = class Mirror {
         return result
     }
 
-    async updatePages() {
+    async updatePages(interval, batch, images) {
         const rcnamespace = this.config.pageNamespaces.join('|')
         const rcend = Math.floor(this.config.lastUpdate / 1000) // //milliseconds to seconds
         this.config.lastUpdate = new Date().getTime()
-        const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-            params: {
-                format: 'json',
-                action: 'query',
-                list: 'recentchanges',
-                rclimit: 'max',
-                rcnamespace,
-                rcend,
-            }
-        })
-        const titles = data.query.recentchanges.map(({title}) => title)
-        return await Promise.all(titles.map((title) => this.updatePage(title)).filter((page) => page))
+        const updatedPages = []
+        let rccontinue = null
+        do {
+            const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                params: {
+                    format: 'json',
+                    action: 'query',
+                    list: 'recentchanges',
+                    rclimit: batch,
+                    rcnamespace,
+                    rcend,
+                    rccontinue,
+                }
+            })
+            const titles = data.query.recentchanges.map(({title}) => title)
+            updatedPages.push(...await Promise.all(titles.map((title) => this.updatePage(title, images))))
+            await this.sleep(interval)
+        } while(rccontinue)
+        return updatedPages.filter((page) => page)
     }
 
     async buildPage(rawPage) {
@@ -234,15 +242,9 @@ const Mirror = class Mirror {
         return await this.writePage(title, page.content)
     }
 
-    buildPageWithTitle(title) {
-        return new Promise((resolve, reject) => {
-            fs.readFile(this.getRawPath(title), (error, data) => {
-                if(error) reject(error)
-                else {
-                    this.buildPage(JSON.parse(data)).then(resolve).catch(reject)
-                }
-            })
-        })
+    async buildPageWithTitle(title) {
+        const data = fs.readFileSync(this.getRawPath(title))
+        return await this.buildPage(JSON.parse(data)).then(resolve).catch(reject)
     }
 
     async fullBuild() {
@@ -255,22 +257,19 @@ const Mirror = class Mirror {
         })
     }
 
-    updateImage(title) {
-        return new Promise((resolve, reject) => {
-            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-                params: {
-                    format: 'json',
-                    action: 'query',
-                    titles: title,
-                    prop: 'imageinfo',
-                    iiprop: 'url',
-                }
-            }).then(({data}) => {
-                const sourceUrl = new URL(Object.values(data.query.pages)[0].imageinfo[0].url)
-                const destPath = this.getImagePath(sourceUrl)
-                this.downloadImage(sourceUrl.href, destPath).then(resolve).catch(reject)
-            }).catch((error) => reject(error))
+    async updateImage(title) {
+        const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+            params: {
+                format: 'json',
+                action: 'query',
+                titles: title,
+                prop: 'imageinfo',
+                iiprop: 'url',
+            }
         })
+        const sourceUrl = new URL(Object.values(data.query.pages)[0].imageinfo[0].url)
+        const destPath = this.getImagePath(sourceUrl)
+        return this.downloadImage(sourceUrl.href, destPath)
     }
 
     async fullUpdateImages(interval, batch) {
@@ -288,7 +287,7 @@ const Mirror = class Mirror {
             })
             const titles = data.query.allimages.map(({title}) => title)
             aicontinue = data.continue ? data.continue.aicontinue : null
-            updatedImages.push(...(await Promise.all(titles.map((title) => this.updateImage(title)))))
+            updatedImages.push(...await Promise.all(titles.map((title) => this.updateImage(title))))
             await this.sleep(interval)
         } while(aicontinue)
         return updatedImages
