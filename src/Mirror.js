@@ -20,13 +20,13 @@ const Mirror = class Mirror {
     constructor(config, dir) {
         this.config = config
         this.dir = dir
-        this.skin = new Skin(path.join(this.dir, config.skinPath))
+        this.skin = new Skin(path.join(this.dir, config.path.skin))
         this.axios = axios.create({
-            baseURL: this.config.sourceUrl,
+            baseURL: this.config.source.url,
         })
 
-        this.pagesBaseUrl = this.config.baseUrl + this.config.pagesPath
-        this.imagesBaseUrl = this.config.baseUrl + this.config.imagesPath
+        this.pagesBaseUrl = this.config.meta.baseUrl + this.config.path.pages
+        this.imagesBaseUrl = this.config.meta.baseUrl + this.config.path.images
     }
 
     sleep(duration) {
@@ -58,7 +58,7 @@ const Mirror = class Mirror {
         Object.entries(namespaces).forEach(([key, value]) => namespaces[key] = value['*'])
 
         this.config.mainPage = '/' + general.mainpage
-        this.config.namespaces = namespaces
+        this.config.namespace.names = namespaces
 
         await this.writeRawPage({title: "index", text: `<html><body><div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div></body></html>`})
 
@@ -121,7 +121,7 @@ const Mirror = class Mirror {
 
     async updatePage(title, images=true) {
         const isCategory = title.indexOf(':') !== -1
-                && title.slice(0, title.indexOf(':')) == this.config.namespaces[14]
+                && title.slice(0, title.indexOf(':')) == this.config.namespace.names[14]
         const {data} = await this.axios.get(API_ENDPOINT, {
             params: {
                 format: 'json',
@@ -146,7 +146,7 @@ const Mirror = class Mirror {
         $('*').contents().filter((_i, {type}) => type === 'comment').remove()
         if(images) {
             $('img').each(async (_i, img) => {
-                const sourceUrl = new URL(img.attribs['src'], this.config.sourceUrl)
+                const sourceUrl = new URL(img.attribs['src'], this.config.source.url)
                 const destPath = this.getImagePath(sourceUrl)
                 this.downloadImage(sourceUrl.href, destPath)
             })
@@ -184,7 +184,7 @@ const Mirror = class Mirror {
         this.mkdirs()
         this.config.lastUpdate = new Date().getTime()
         const result = []
-        for(let namespace of this.config.pageNamespaces) {
+        for(let namespace of this.config.namespace.update) {
             result.push(...await this.fullUpdatePages(namespace, interval, batch))
         }
         return result
@@ -192,7 +192,7 @@ const Mirror = class Mirror {
 
     async updatePages(interval, batch, images) {
         this.mkdirs()
-        const rcnamespace = this.config.pageNamespaces.join('|')
+        const rcnamespace = this.config.namespace.update.join('|')
         const rcend = Math.floor(this.config.lastUpdate / 1000) // //milliseconds to seconds
         this.config.lastUpdate = new Date().getTime()
         const updatedPages = []
@@ -251,8 +251,8 @@ const Mirror = class Mirror {
     }
 
     async fullBuild() {
-        const list = fs.readdirSync(path.join(this.dir, this.config.rawsPath))
-                .map((title) => [path.join(this.dir, this.config.rawsPath, title), title])
+        const list = fs.readdirSync(path.join(this.dir, this.config.path.raw))
+                .map((title) => [path.join(this.dir, this.config.path.raw, title), title])
                 .filter(([rawPath]) => !fs.statSync(rawPath).isDirectory() && rawPath.endsWith(RAW_FILE_EXTENSION))
                 .map(([_rawPath, fileName]) => fileName)
         return list.map(async (fileName) => {
@@ -300,9 +300,9 @@ const Mirror = class Mirror {
 
     processLink(href) {
         const indexPhp = '/index.php'
-        const url = new URL(href, this.config.sourceUrl)
+        const url = new URL(href, this.config.source.url)
         const path = url.pathname.split('/')
-        if(path.slice(0, 2).join('/') == this.config.sourceWikiUrl) {
+        if(path.slice(0, 2).join('/') == this.config.source.wiki) {
             return this.makeLink(path.slice(2).join('/'))
         } else if(href.slice(0, indexPhp.length) == indexPhp) {
             return url.href
@@ -310,15 +310,15 @@ const Mirror = class Mirror {
     }
 
     processImageSrc(src) {
-        const url = new URL(src, this.config.sourceUrl)
+        const url = new URL(src, this.config.source.url)
         const path = url.pathname.split('/')
-        if(path.slice(0, 2).join('/') == this.config.sourceImagesUrl) {
+        if(path.slice(0, 2).join('/') == this.config.source.images) {
             return this.makeImageLink(path.slice(2).join('/'))
         } else return src
     }
 
     makeLink(title) {
-        return combineURLs(this.pagesBaseUrl, title + this.config.pageExtension)
+        return combineURLs(this.pagesBaseUrl, title + this.config.extension.page)
     }
 
     makeImageLink(title) {
@@ -334,15 +334,15 @@ const Mirror = class Mirror {
     }
 
     getRawPath(title) {
-        return this.getPath(title, this.config.rawsPath, RAW_FILE_EXTENSION)
+        return this.getPath(title, this.config.path.raw, RAW_FILE_EXTENSION)
     }
 
     getRawTextPath(title) {
-        return this.getPath(title, this.config.rawsPath, RAW_TEXT_FILE_EXTENSION)
+        return this.getPath(title, this.config.path.raw, RAW_TEXT_FILE_EXTENSION)
     }
 
     getPagePath(title) {
-        return this.getPath(title, this.config.pagesPath, this.config.pageExtension)
+        return this.getPath(title, this.config.path.pages, this.config.extension.page)
     }
 
     getPath(title, basePath, extension) {
@@ -350,15 +350,15 @@ const Mirror = class Mirror {
     }
 
     getImagePath(sourceUrl) {
-        return path.join(this.dir, this.config.imagesPath, sourceUrl.pathname.split('/').slice(2).join('/'))
+        return path.join(this.dir, this.config.path.images, sourceUrl.pathname.split('/').slice(2).join('/'))
     }
 
     mkdirs() {
-        const pages = path.join(this.dir, this.config.pagesPath)
+        const pages = path.join(this.dir, this.config.path.pages)
         if(!fs.existsSync(pages)) fs.mkdirSync(pages, { recursive: true })
-        const raws = path.join(this.dir, this.config.rawsPath)
+        const raws = path.join(this.dir, this.config.path.raw)
         if(!fs.existsSync(raws)) fs.mkdirSync(raws, { recursive: true })
-        const images = path.join(this.dir, this.config.imagesPath)
+        const images = path.join(this.dir, this.config.path.images)
         if(!fs.existsSync(images)) fs.mkdirSync(images, { recursive: true })
     }
     
@@ -370,6 +370,8 @@ const Mirror = class Mirror {
 }
 
 Mirror.init = function(url, dir) {
+    url = new URL(url).href
+    if(url.endsWith('/')) url = url.slice(0, -1)
     const config = new MirrorConfig(url)
     const mirror = new Mirror(config, dir)
     return mirror
