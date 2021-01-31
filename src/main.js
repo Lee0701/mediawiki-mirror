@@ -80,26 +80,27 @@ if(args.length > 0) {
         const mirror = Mirror.load(dir)
         const app = express()
         const prefix = mirror.config.baseUrl
-        app.get('/', (req, res) => {
-            res.redirect(`${prefix}/pages/${mirror.config.mainPage}`)
-        })
-        app.get(`${prefix}/pages*`, (req, res) => {
-            const url = decodeURIComponent(req.url.slice(prefix.length + '/pages'.length))
-            console.log('pages', url)
-            if(url == '/' || url == '') return res.redirect(`${prefix}/pages/${mirror.config.mainPage}`)
-            const title = (url.charAt(0) == '/') ? url.slice(1) : url
-            const content = mirror.getPageContent(title)
-            if(content === null) res.status(404).send('404')
-            else res.status(200).send(content)
-        })
-        app.get(`${prefix}/images*`, (req, res) => {
-            const url = decodeURIComponent(req.url.slice(prefix.length + '/images'.length))
-            console.log('images', url)
-            const imagePath = (url.charAt(0) == '/') ? url.slice(1) : url
-            const content = mirror.getImage(imagePath)
-            if(content === null) res.status(404).send('404')
-            else res.status(200).send(content)
-        })
+        app.use('/', express.static(mirror.dir))
+        // app.get('/', (req, res) => {
+        //     res.redirect(`${prefix}/${mirror.config.mainPage}`)
+        // })
+        // app.get(`${prefix}*`, (req, res) => {
+        //     const url = decodeURIComponent(req.url)
+        //     console.log('pages', url)
+        //     if(url == '/' || url == '') return res.redirect(`${prefix}/pages/${mirror.config.mainPage}`)
+        //     const title = (url.charAt(0) == '/') ? url.slice(1) : url
+        //     const content = mirror.getPageContent(title)
+        //     if(content === null) res.status(404).send('404')
+        //     else res.status(200).send(content)
+        // })
+        // app.get(`${prefix}*`, (req, res) => {
+        //     const url = decodeURIComponent(req.url)
+        //     console.log('images', url)
+        //     const imagePath = (url.charAt(0) == '/') ? url.slice(1) : url
+        //     const content = mirror.getImage(imagePath)
+        //     if(content === null) res.status(404).send('404')
+        //     else res.status(200).send(content)
+        // })
         app.listen(port)
         
     } else {

@@ -10,8 +10,9 @@ const Skin = require('./Skin')
 const API_ENDPOINT = '/api.php'
 
 const MIRROR_CONFIG_FILENAME = 'mirror.json'
+const PAGE_EXTENSION = '.html'
 const RAWS_PATHNAME = 'raws'
-const PAGES_PATHNAME = 'pages'
+const PAGES_PATHNAME = 'wiki'
 const IMAGES_PATHNAME = 'images'
 
 const Mirror = class Mirror {
@@ -20,6 +21,9 @@ const Mirror = class Mirror {
         this.config = config
         this.dir = dir
         this.skin = new Skin(path.join(this.dir, config.skinPath))
+
+        this.pagesBaseUrl = this.config.baseUrl + '/' + PAGES_PATHNAME
+        this.imagesBaseUrl = this.config.baseUrl + '/' + IMAGES_PATHNAME
     }
 
     writeConfig() {
@@ -47,7 +51,7 @@ const Mirror = class Mirror {
                 this.config.mainPage = general.mainpage
                 this.config.namespaces = namespaces
                 resolve()
-            }).catch((error) => reject({error}))
+            }).catch((error) => reject(error))
         })
     }
 
@@ -74,6 +78,20 @@ const Mirror = class Mirror {
         })
     }
 
+    downloadImage(sourceUrl, destPath) {
+        return new Promise((resolve, reject) => {
+            axios.get(sourceUrl, {
+                responseType: 'stream',
+            }).then(({data}) => {
+                fs.mkdirSync(path.dirname(destPath), {recursive: true})
+                const writer = fs.createWriteStream(destPath)
+                data.pipe(writer)
+                writer.on('finish', resolve)
+                writer.on('error', reject)
+            }).catch(reject)
+        })
+    }
+
     getCategoryMembers(cmtitle) {
         return new Promise((resolve, reject) => {
             const members = []
@@ -97,7 +115,7 @@ const Mirror = class Mirror {
         })
     }
 
-    updatePage(title) {
+    updatePage(title, images=true) {
         return new Promise((resolve, reject) => {
             const isCategory = title.indexOf(':') !== -1
                     && title.slice(0, title.indexOf(':')) == this.config.namespaces[14]
@@ -126,11 +144,23 @@ const Mirror = class Mirror {
                         .map(({title}) => title)
                 const page = {title, text, categories}
                 if(isCategory && results.length > 2) page.members = results[2]
-                this.writeRaw(title, page).then(() => {
-                    this.buildPage(page).then(resolve).catch(reject)
-                }).catch((error) => reject({error}))
+                this.writeRaw(title, page).then(async () => {
+                    try {
+                        if(images) {
+                            const $ = cheerio.load(text)
+                            await $('img').each(async (_i, img) => {
+                                const sourceUrl = new URL(img.attribs['src'], this.config.sourceUrl)
+                                const destPath = this.getImagePath(sourceUrl)
+                                this.downloadImage(sourceUrl.href, destPath)
+                            })
+                        }
+                        resolve(await this.buildPage(page))
+                    } catch(error) {
+                        reject(error)
+                    }
+                }).catch((error) => reject(error))
             }).catch((error) => {
-                reject({error})
+                reject(error)
             })
         })
     }
@@ -151,9 +181,9 @@ const Mirror = class Mirror {
                 const apcontinue = data.continue ? data.continue.apcontinue : null
                 Promise.all(titles.map((title) => this.updatePage(title))).then((updatedPages) => {
                     resolve({apcontinue, updatedPages})
-                }).catch((errors) => reject({error: errors}))
+                }).catch((errors) => reject(errors))
             }).catch((error) => {
-                reject({error})
+                reject(error)
             })
         })
     }
@@ -178,9 +208,9 @@ const Mirror = class Mirror {
                         pages.push(...updatedPages)
                         if(apcontinue) setTimeout(() => update(apcontinue), interval)
                         else resolve({updatedPages: pages})
-                    }).catch((errors) => reject({error: errors, updatedPages: pages}))
+                    }).catch((errors) => reject(errors))
                 }).catch((error) => {
-                    reject({error, updatedPages: pages})
+                    reject(error)
                 })
             }
             update()
@@ -198,7 +228,7 @@ const Mirror = class Mirror {
                 }
                 resolve({updatedPages})
             } catch(error) {
-                reject({error, updatedPages})
+                reject(error)
             }
         })
     }
@@ -221,25 +251,22 @@ const Mirror = class Mirror {
                 const titles = data.query.recentchanges.map(({title}) => title)
                 Promise.all(titles.map((title) => this.updatePage(title))).then((updatedPages) => {
                     resolve({updatedPages})
-                }).catch((errors) => reject({error: errors}))
-            }).catch((error) => reject({error}))
+                }).catch((errors) => reject(errors))
+            }).catch((error) => reject(error))
         })
     }
 
     buildPage(rawPage) {
         return new Promise((resolve, reject) => {
-            const pagesBaseUrl = this.config.baseUrl + '/' + PAGES_PATHNAME
-            const imagesBaseUrl = this.config.baseUrl + '/' + IMAGES_PATHNAME
-
             const title = rawPage.title
             const text = rawPage.text.toString()
 
             const categories = (rawPage.categories || []).map((c) => ({
                 name: c.slice(c.indexOf(':') + 1),
-                url: `${pagesBaseUrl}/${encodeURIComponent(c)}`
+                url: `${this.pagesBaseUrl}/${encodeURIComponent(c)}`
             }))
             const members = (rawPage.members || [])
-                    .map((m) => ({name: m, url: `${pagesBaseUrl}/${encodeURIComponent(m)}`}))
+                    .map((m) => ({name: m, url: `${this.pagesBaseUrl}/${encodeURIComponent(m)}`}))
             
             const page = {title, content: text, categories, members}
             const $ = cheerio.load(text)
@@ -248,31 +275,18 @@ const Mirror = class Mirror {
             mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
             mwParserOutput.find('a').attr('href', (_i, href) => {
                 if(!href) return
-                if(href.charAt(0) !== '/') href = '/' + href
-                const replace = this.config.sourceWikiUrl
-                const to = pagesBaseUrl
-                const indexPhp = '/index.php'
-                if(href.slice(0, replace.length) == replace) {
-                    return to + href.slice(replace.length)
-                } else if(href.slice(0, indexPhp.length) == indexPhp) {
-                    return new URL(href, this.config.sourceUrl).href
-                } else return href
+                return this.processLink(href)
             })
             mwParserOutput.find('img').attr('src', (_i, src) => {
                 if(!src) return
-                if(src.charAt(0) !== '/') src = '/' + src
-                const replace = this.config.sourceImagesUrl
-                const to = imagesBaseUrl
-                if(src.slice(0, replace.length) == replace) {
-                    return to + src.slice(replace.length)
-                } else return src
+                return this.processImageSrc(src)
             })
             page.content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
             page.content = this.skin.formatIndex({site: this.config, page})
     
             this.writePage(title, page.content)
                     .then(() => resolve(page))
-                    .catch((error) => reject({error}))
+                    .catch((error) => reject(error))
         })
     }
 
@@ -309,20 +323,6 @@ const Mirror = class Mirror {
         })
     }
 
-    downloadImage(sourceUrl, destPath) {
-        return new Promise((resolve, reject) => {
-            axios.get(sourceUrl, {
-                responseType: 'stream',
-            }).then(({data}) => {
-                fs.mkdirSync(path.dirname(destPath), {recursive: true})
-                const writer = fs.createWriteStream(destPath)
-                data.pipe(writer)
-                writer.on('finish', resolve)
-                writer.on('error', reject)
-            }).catch(reject)
-        })
-    }
-
     updateImage(title) {
         return new Promise((resolve, reject) => {
             axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
@@ -334,12 +334,10 @@ const Mirror = class Mirror {
                     iiprop: 'url',
                 }
             }).then(({data}) => {
-                const sourceUrl = Object.values(data.query.pages)[0].imageinfo[0].url
-                const destUrl = sourceUrl.slice(new URL('images', this.config.sourceUrl).href.length)
-                const destPath = this.getImagePath(destUrl)
-                console.log(destUrl)
-                this.downloadImage(sourceUrl, destPath).then(resolve).catch(reject)
-            }).catch((error) => reject({error}))
+                const sourceUrl = new URL(Object.values(data.query.pages)[0].imageinfo[0].url)
+                const destPath = this.getImagePath(sourceUrl)
+                this.downloadImage(sourceUrl.href, destPath).then(resolve).catch(reject)
+            }).catch((error) => reject(error))
         })
     }
 
@@ -362,13 +360,32 @@ const Mirror = class Mirror {
                         images.push(...updatedImages)
                         if(aicontinue) setTimeout(() => update(aicontinue), interval)
                         else resolve({updatedImages: images})
-                    }).catch((errors) => reject({error: errors, updatedImages: images}))
+                    }).catch((errors) => reject(errors))
                 }).catch((error) => {
-                    reject({error, updatedImages: images})
+                    reject(error)
                 })
             }
             update()
         })
+    }
+
+    processLink(href) {
+        const indexPhp = '/index.php'
+        const url = new URL(href, this.config.sourceUrl)
+        const path = url.pathname.split('/')
+        if(path.slice(0, 2).join('/') == this.config.sourceWikiUrl) {
+            return path.join('/') + PAGE_EXTENSION
+        } else if(href.slice(0, indexPhp.length) == indexPhp) {
+            return url.href
+        } else return href
+    }
+
+    processImageSrc(src) {
+        const url = new URL(src, this.config.sourceUrl)
+        const path = url.pathname.split('/')
+        if(path.slice(0, 2).join('/') == this.config.sourceImagesUrl) {
+            return path.join('/')
+        } else return src
     }
 
     getRawPath(title) {
@@ -379,8 +396,8 @@ const Mirror = class Mirror {
         return path.join(this.dir, PAGES_PATHNAME, `${title}.html`)
     }
 
-    getImagePath(imagePath) {
-        return path.join(this.dir, IMAGES_PATHNAME, imagePath)
+    getImagePath(sourceUrl) {
+        return path.join(this.dir, IMAGES_PATHNAME, sourceUrl.pathname.split('/').slice(2).join('/'))
     }
 
     mkdirs() {
@@ -388,18 +405,6 @@ const Mirror = class Mirror {
         if(!fs.existsSync(pages)) fs.mkdirSync(pages)
         const raws = path.join(this.dir, RAWS_PATHNAME)
         if(!fs.existsSync(raws)) fs.mkdirSync(raws)
-    }
-
-    getPageContent(title) {
-        const path = this.getPagePath(title)
-        if(!fs.existsSync(path)) return null
-        return fs.readFileSync(path).toString()
-    }
-
-    getImage(imagePath) {
-        imagePath = path.join(this.dir, IMAGES_PATHNAME, imagePath)
-        if(!fs.existsSync(imagePath)) return null
-        return fs.readFileSync(imagePath)
     }
 
 }

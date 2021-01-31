@@ -11,8 +11,7 @@ const MirrorConfig = class MirrorConfig {
         this.pageNamespaces = [0, 1, 2, 3, 4, 5, 6, 7, 14, 15]
 
         this.title = title
-        this.baseUrl = '/wiki'
-        this.imageBaseUrl = '/images'
+        this.baseUrl = ''
         this.skinPath = 'skin'
 
         this.lastUpdate = 0
@@ -26,14 +25,13 @@ MirrorConfig.load = function(file) {
     const json = JSON.parse(fs.readFileSync(file).toString())
     const config = new MirrorConfig(json.sourceUrl)
     if(json.sourceWikiUrl) config.sourceWikiUrl = json.sourceWikiUrl
-    if(json.sourceImagesUrl) config.sourceImagesUrl = json.sourceImageUrl
+    if(json.sourceImagesUrl) config.sourceImagesUrl = json.sourceImagesUrl
     if(json.mainPage) config.mainPage = json.mainPage
     if(json.namespaces) config.namespaces = json.namespaces
     if(json.pageNamespaces) config.pageNamespaces = json.pageNamespaces
 
     if(json.title) config.title = json.title
     if(json.baseUrl) config.baseUrl = json.baseUrl
-    if(json.imageBaseUrl) config.imageBaseUrl = json.imageBaseUrl
     if(json.skinPath) config.skinPath = json.skinPath
     if(json.lastUpdate) config.lastUpdate = json.lastUpdate
     
