@@ -21,9 +21,19 @@ const Mirror = class Mirror {
         this.config = config
         this.dir = dir
         this.skin = new Skin(path.join(this.dir, config.skinPath))
+        this.axios = axios.create({
+            baseURL: this.config.sourceUrl,
+            timeout: 5000,
+        })
 
         this.pagesBaseUrl = this.config.baseUrl + '/' + PAGES_PATHNAME
         this.imagesBaseUrl = this.config.baseUrl + '/' + IMAGES_PATHNAME
+    }
+
+    sleep(duration) {
+        return new Promise((resolve) => {
+            setTimeout(() => resolve(), duration)
+        })
     }
 
     writeConfig() {
@@ -35,29 +45,26 @@ const Mirror = class Mirror {
         this.writeConfig()
     }
     
-    updateMeta() {
-        return new Promise((resolve, reject) => {
-            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-                params: {
-                    format: 'json',
-                    action: 'query',
-                    meta: 'siteinfo',
-                    siprop: 'general|namespaces',
-                }
-            }).then(({data}) => {
-                const {general, namespaces} = data.query
-                Object.entries(namespaces).forEach(([key, value]) => namespaces[key] = value['*'])
-
-                this.config.mainPage = general.mainpage
-                this.config.namespaces = namespaces
-                resolve()
-            }).catch((error) => reject(error))
+    async updateMeta() {
+        const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+            params: {
+                format: 'json',
+                action: 'query',
+                meta: 'siteinfo',
+                siprop: 'general|namespaces',
+            }
         })
+        const {general, namespaces} = data.query
+        Object.entries(namespaces).forEach(([key, value]) => namespaces[key] = value['*'])
+
+        this.config.mainPage = general.mainpage
+        this.config.namespaces = namespaces
+
     }
 
-    writeRaw(title, rawPage) {
+    writeRaw(rawPage) {
         return new Promise((resolve, reject) => {
-            const rawPath = this.getRawPath(title)
+            const rawPath = this.getRawPath(rawPage.title)
             const content = JSON.stringify(rawPage, null, 2)
             fs.mkdirSync(path.dirname(rawPath), {recursive: true})
             fs.writeFile(rawPath, content, (error) => {
@@ -92,202 +99,139 @@ const Mirror = class Mirror {
         })
     }
 
-    getCategoryMembers(cmtitle) {
-        return new Promise((resolve, reject) => {
-            const members = []
-            const continueQuery = (cmcontinue) => {
-                axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-                    params: {
-                        format: 'json',
-                        action: 'query',
-                        list: 'categorymembers',
-                        cmtitle,
-                        cmcontinue,
-                    }
-                }).then(({data}) => {
-                    const result = data.query.categorymembers.map(({title}) => title)
-                    members.push(...result)
-                    if(data.continue) continueQuery(data.continue.cmcontinue)
-                    else resolve(members)
-                }).catch(reject)
-            }
-            continueQuery()
-        })
-    }
-
-    updatePage(title, images=true) {
-        return new Promise((resolve, reject) => {
-            const isCategory = title.indexOf(':') !== -1
-                    && title.slice(0, title.indexOf(':')) == this.config.namespaces[14]
-            const getContent = axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-                params: {
-                    format: 'json',
-                    action: 'parse',
-                    page: title,
-                    prop: 'text|categories',
-                    formatversion: 2,
-                }
-            })
-            const getCategories = axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+    async getCategoryMembers(cmtitle) {
+        const members = []
+        let cmcontinue = null
+        do {
+            const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
                 params: {
                     format: 'json',
                     action: 'query',
-                    titles: title,
-                    prop: 'categories',
+                    list: 'categorymembers',
+                    cmtitle,
+                    cmcontinue,
                 }
             })
-            const promises = [getContent, getCategories]
-            if(isCategory) promises.push(this.getCategoryMembers(title))
-            Promise.all(promises).then((results) => {
-                const {title, text} = results[0].data.parse
-                const categories = (Object.values(results[1].data.query.pages)[0].categories || [])
-                        .map(({title}) => title)
-                const page = {title, text, categories}
-                if(isCategory && results.length > 2) page.members = results[2]
-                this.writeRaw(title, page).then(async () => {
-                    try {
-                        if(images) {
-                            const $ = cheerio.load(text)
-                            await $('img').each(async (_i, img) => {
-                                const sourceUrl = new URL(img.attribs['src'], this.config.sourceUrl)
-                                const destPath = this.getImagePath(sourceUrl)
-                                this.downloadImage(sourceUrl.href, destPath)
-                            })
-                        }
-                        resolve(await this.buildPage(page))
-                    } catch(error) {
-                        reject(error)
-                    }
-                }).catch((error) => reject(error))
-            }).catch((error) => {
-                reject(error)
-            })
-        })
+            const result = data.query.categorymembers.map(({title}) => title)
+            members.push(...result)
+        } while(cmcontinue)
+        return members
     }
 
-    updateBatch = (aplimit, apnamespace, apcontinue=null) => {
-        return new Promise((resolve, reject) => {
-            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+    async updatePage(title, images=true) {
+        const isCategory = title.indexOf(':') !== -1
+                && title.slice(0, title.indexOf(':')) == this.config.namespaces[14]
+        const {data} = await this.axios.get(API_ENDPOINT, {
+            params: {
+                format: 'json',
+                action: 'parse',
+                page: title,
+                prop: 'text|categories',
+                formatversion: 2,
+            }
+        })
+        const categoriesResult = await this.axios.get(API_ENDPOINT, {
+            params: {
+                format: 'json',
+                action: 'query',
+                titles: title,
+                prop: 'categories',
+            }
+        })
+        const categories = (Object.values(categoriesResult.data.query.pages)[0].categories || []).map(({title}) => title)
+        if(!data.parse) return null
+        const {text} = data.parse
+        const page = {title, text, categories}
+        if(isCategory) page.members = await this.getCategoryMembers(title)
+        if(images) {
+            const $ = cheerio.load(text)
+            $('img').each(async (_i, img) => {
+                const sourceUrl = new URL(img.attribs['src'], this.config.sourceUrl)
+                const destPath = this.getImagePath(sourceUrl)
+                this.downloadImage(sourceUrl.href, destPath)
+            })
+        }
+        await this.writeRaw(title, page)
+        return await this.buildPage(page)
+    }
+
+    async fullUpdatePages(namespace, interval, batch) {
+        const updatedPages = []
+        let apcontinue = null
+        do {
+            const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
                 params: {
                     format: 'json',
                     action: 'query',
                     list: 'allpages',
-                    aplimit,
-                    apnamespace,
+                    aplimit: batch,
+                    apnamespace: namespace,
                     apcontinue,
                 }
-            }).then(({data}) => {
-                const titles = data.query.allpages.map(({title}) => title)
-                const apcontinue = data.continue ? data.continue.apcontinue : null
-                Promise.all(titles.map((title) => this.updatePage(title))).then((updatedPages) => {
-                    resolve({apcontinue, updatedPages})
-                }).catch((errors) => reject(errors))
-            }).catch((error) => {
-                reject(error)
             })
-        })
+            const titles = data.query.allpages.map(({title}) => title)
+            apcontinue = data.continue ? data.continue.apcontinue : null
+            updatedPages.push(await Promise.all(titles.map((title) => this.updatePage(title)).filter((page) => page)))
+        } while (apcontinue)
+        return updatedPages
     }
 
-    fullUpdatePages(namespace, interval, batch) {
-        return new Promise((resolve, reject) => {
-            const pages = []
-            const update = (apcontinue) => {
-                axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-                    params: {
-                        format: 'json',
-                        action: 'query',
-                        list: 'allpages',
-                        aplimit: batch,
-                        apnamespace: namespace,
-                        apcontinue,
-                    }
-                }).then(({data}) => {
-                    const titles = data.query.allpages.map(({title}) => title)
-                    const apcontinue = data.continue ? data.continue.apcontinue : null
-                    Promise.all(titles.map((title) => this.updatePage(title))).then((updatedPages) => {
-                        pages.push(...updatedPages)
-                        if(apcontinue) setTimeout(() => update(apcontinue), interval)
-                        else resolve({updatedPages: pages})
-                    }).catch((errors) => reject(errors))
-                }).catch((error) => {
-                    reject(error)
-                })
-            }
-            update()
-        })
-    }
-
-    fullUpdateAllNamespaces(interval, batch) {
+    async fullUpdateAllNamespaces(interval, batch) {
         this.config.lastUpdate = new Date().getTime()
         this.mkdirs()
-        return new Promise(async (resolve, reject) => {
-            const updatedPages = []
-            try {
-                for(let namespace of this.config.pageNamespaces) {
-                    updatedPages.push(...(await this.fullUpdatePages(namespace, interval, batch)).updatedPages)
-                }
-                resolve({updatedPages})
-            } catch(error) {
-                reject(error)
-            }
-        })
+        const result = []
+        for(let namespace of this.config.pageNamespaces) {
+            result.push(...await this.fullUpdatePages(namespace, interval, batch))
+        }
+        return result
     }
 
-    update() {
+    async updatePages() {
         const rcnamespace = this.config.pageNamespaces.join('|')
         const rcend = Math.floor(this.config.lastUpdate / 1000) // //milliseconds to seconds
         this.config.lastUpdate = new Date().getTime()
-        return new Promise((resolve, reject) => {
-            axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-                params: {
-                    format: 'json',
-                    action: 'query',
-                    list: 'recentchanges',
-                    rclimit: 'max',
-                    rcnamespace,
-                    rcend,
-                }
-            }).then(({data}) => {
-                const titles = data.query.recentchanges.map(({title}) => title)
-                Promise.all(titles.map((title) => this.updatePage(title))).then((updatedPages) => {
-                    resolve({updatedPages})
-                }).catch((errors) => reject(errors))
-            }).catch((error) => reject(error))
+        const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+            params: {
+                format: 'json',
+                action: 'query',
+                list: 'recentchanges',
+                rclimit: 'max',
+                rcnamespace,
+                rcend,
+            }
         })
+        const titles = data.query.recentchanges.map(({title}) => title)
+        return await Promise.all(titles.map((title) => this.updatePage(title)).filter((page) => page))
     }
 
-    buildPage(rawPage) {
-        return new Promise((resolve, reject) => {
-            const title = rawPage.title
-            const text = rawPage.text.toString()
+    async buildPage(rawPage) {
+        const title = rawPage.title
+        const text = rawPage.text.toString()
 
-            const categories = (rawPage.categories || []).map((c) => ({
-                name: c.slice(c.indexOf(':') + 1),
-                url: `${this.pagesBaseUrl}/${encodeURIComponent(c)}`
-            }))
-            const members = (rawPage.members || [])
-                    .map((m) => ({name: m, url: `${this.pagesBaseUrl}/${encodeURIComponent(m)}`}))
-            
-            const page = {title, content: text, categories, members}
-            const $ = cheerio.load(text)
-            const mwParserOutput = $('.mw-parser-output')
-    
-            mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
-            mwParserOutput.find('a').attr('href', (_i, href) => {
-                if(!href) return
-                return this.processLink(href)
-            })
-            mwParserOutput.find('img').attr('src', (_i, src) => {
-                if(!src) return
-                return this.processImageSrc(src)
-            })
-            page.content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
-            page.content = this.skin.formatIndex({site: this.config, page})
-    
-            this.writePage(title, page.content)
-                    .then(() => resolve(page))
-                    .catch((error) => reject(error))
+        const categories = (rawPage.categories || []).map((category) => ({
+            name: category.split(':')[0],
+            url: this.processLink(category)
+        }))
+        const members = (rawPage.members || [])
+                .map((m) => ({name: m, url: `${this.pagesBaseUrl}/${encodeURIComponent(m)}`}))
+        
+        const page = {title, content: text, categories, members}
+        const $ = cheerio.load(text)
+        const mwParserOutput = $('.mw-parser-output')
+
+        mwParserOutput.contents().filter((_i, {type}) => type === 'comment').remove()
+        mwParserOutput.find('a').attr('href', (_i, href) => {
+            if(!href) return
+            return this.processLink(href)
         })
+        mwParserOutput.find('img').attr('src', (_i, src) => {
+            if(!src) return
+            return this.processImageSrc(src)
+        })
+        page.content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
+        page.content = this.skin.formatIndex({site: this.config, page})
+
+        return await this.writePage(title, page.content)
     }
 
     buildPageWithTitle(title) {
@@ -301,25 +245,13 @@ const Mirror = class Mirror {
         })
     }
 
-    fullBuild() {
-        return new Promise((resolve, reject) => {
-            fs.readdir(path.join(this.dir, RAWS_PATHNAME), (error, list) => {
-                if(error) return reject(error)
-                else {
-                    list = list.map((title) => path.join(this.dir, RAWS_PATHNAME, title))
-                    list = list.filter((rawPath) => !fs.statSync(rawPath).isDirectory())
-                    Promise.all(list.map((rawPath) => new Promise((resolve, reject) => {
-                        fs.readFile(rawPath, (error, data) => {
-                            if(error) reject(error)
-                            else {
-                                this.buildPage(JSON.parse(data)).then(resolve).catch(reject)
-                            }
-                        })
-                    }))).then((builtPages) => {
-                        resolve({builtPages})
-                    }).catch(reject)
-                }
-            })
+    async fullBuild() {
+        let list = fs.readdirSync(path.join(this.dir, RAWS_PATHNAME))
+        list = list.map((title) => path.join(this.dir, RAWS_PATHNAME, title))
+        list = list.filter((rawPath) => !fs.statSync(rawPath).isDirectory())
+        return list.map(async (rawPath) => {
+            const data = fs.readFileSync(rawPath)
+            return await this.buildPage(JSON.parse(data))
         })
     }
 
@@ -341,32 +273,25 @@ const Mirror = class Mirror {
         })
     }
 
-    fullUpdateImages(interval, batch) {
-        return new Promise((resolve, reject) => {
-            const images = []
-            const update = (aicontinue) => {
-                axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
-                    params: {
-                        format: 'json',
-                        action: 'query',
-                        list: 'allimages',
-                        ailimit: batch,
-                        aicontinue,
-                    }
-                }).then(({data}) => {
-                    const titles = data.query.allimages.map(({title}) => title)
-                    const aicontinue = data.continue ? data.continue.aicontinue : null
-                    Promise.all(titles.map((title) => this.updateImage(title))).then((updatedImages) => {
-                        images.push(...updatedImages)
-                        if(aicontinue) setTimeout(() => update(aicontinue), interval)
-                        else resolve({updatedImages: images})
-                    }).catch((errors) => reject(errors))
-                }).catch((error) => {
-                    reject(error)
-                })
-            }
-            update()
-        })
+    async fullUpdateImages(interval, batch) {
+        const updatedImages = []
+        let aicontinue = null
+        do {
+            const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+                params: {
+                    format: 'json',
+                    action: 'query',
+                    list: 'allimages',
+                    ailimit: batch,
+                    aicontinue,
+                }
+            })
+            const titles = data.query.allimages.map(({title}) => title)
+            aicontinue = data.continue ? data.continue.aicontinue : null
+            updatedImages.push(...(await Promise.all(titles.map((title) => this.updateImage(title)))))
+            await this.sleep(interval)
+        } while(aicontinue)
+        return updatedImages
     }
 
     processLink(href) {

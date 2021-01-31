@@ -30,7 +30,7 @@ if(args.length > 0) {
         if(args.length > 0) {
             const type = args[0]
             const dir = (args.length > 1) ? args[1] : '.'
-            const batch = (args.length > 2) ? parseInt(args[2]) : 100
+            const batch = (args.length > 2) ? parseInt(args[2]) : 20
             const interval = (args.length > 3) ? parseInt(args[3]) : 1000
             const mirror = Mirror.load(dir)
             console.log(`Full update started.`)
@@ -38,11 +38,11 @@ if(args.length > 0) {
                 console.log('Wiki metadata updated.')
                 mirror.writeMetadata()
                 if(type == 'pages') {
-                    mirror.fullUpdateAllNamespaces(interval, batch).then(({updatedPages}) => {
+                    mirror.fullUpdateAllNamespaces(interval, batch).then((updatedPages) => {
                         console.log(`${updatedPages.length} pages updated and built.`)
                     }).catch(console.error)
                 } else if(type == 'images') {
-                    mirror.fullUpdateImages(interval, batch).then(({updatedImages}) => {
+                    mirror.fullUpdateImages(interval, batch).then((updatedImages) => {
                         console.log(`${updatedImages.length} images updated.`)
                     })
                 }
@@ -56,7 +56,7 @@ if(args.length > 0) {
             const mirror = Mirror.load(dir)
             console.log(`update started.`)
             if(type == 'pages') {
-                mirror.update().then(({updatedPages}) => {
+                mirror.updatePages().then((updatedPages) => {
                     console.log(`${updatedPages.length} pages updated.`)
                     mirror.writeMetadata()
                 }).catch(console.error)
@@ -69,7 +69,7 @@ if(args.length > 0) {
         const dir = (args.length > 0) ? args[0] : '.'
         const mirror = Mirror.load(dir)
         console.log(`full build started.`)
-        mirror.fullBuild().then(({builtPages}) => {
+        mirror.fullBuild().then((builtPages) => {
             console.log(`${builtPages.length} pages built.`)
             mirror.writeMetadata()
         }).catch(console.error)
@@ -81,26 +81,6 @@ if(args.length > 0) {
         const app = express()
         const prefix = mirror.config.baseUrl
         app.use('/', express.static(mirror.dir))
-        // app.get('/', (req, res) => {
-        //     res.redirect(`${prefix}/${mirror.config.mainPage}`)
-        // })
-        // app.get(`${prefix}*`, (req, res) => {
-        //     const url = decodeURIComponent(req.url)
-        //     console.log('pages', url)
-        //     if(url == '/' || url == '') return res.redirect(`${prefix}/pages/${mirror.config.mainPage}`)
-        //     const title = (url.charAt(0) == '/') ? url.slice(1) : url
-        //     const content = mirror.getPageContent(title)
-        //     if(content === null) res.status(404).send('404')
-        //     else res.status(200).send(content)
-        // })
-        // app.get(`${prefix}*`, (req, res) => {
-        //     const url = decodeURIComponent(req.url)
-        //     console.log('images', url)
-        //     const imagePath = (url.charAt(0) == '/') ? url.slice(1) : url
-        //     const content = mirror.getImage(imagePath)
-        //     if(content === null) res.status(404).send('404')
-        //     else res.status(200).send(content)
-        // })
         app.listen(port)
         
     } else {
