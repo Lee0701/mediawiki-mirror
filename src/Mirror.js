@@ -46,7 +46,7 @@ const Mirror = class Mirror {
     
     async updateMeta() {
         this.mkdirs()
-        const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+        const {data} = await this.axios.get(API_ENDPOINT, {
             params: {
                 format: 'json',
                 action: 'query',
@@ -104,7 +104,7 @@ const Mirror = class Mirror {
         const members = []
         let cmcontinue = null
         do {
-            const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+            const {data} = await this.axios.get(API_ENDPOINT, {
                 params: {
                     format: 'json',
                     action: 'query',
@@ -162,7 +162,7 @@ const Mirror = class Mirror {
         const updatedPages = []
         let apcontinue = null
         do {
-            const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+            const {data} = await this.axios.get(API_ENDPOINT, {
                 params: {
                     format: 'json',
                     action: 'query',
@@ -198,7 +198,7 @@ const Mirror = class Mirror {
         const updatedPages = []
         let rccontinue = null
         do {
-            const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+            const {data} = await this.axios.get(API_ENDPOINT, {
                 params: {
                     format: 'json',
                     action: 'query',
@@ -262,7 +262,7 @@ const Mirror = class Mirror {
     }
 
     async updateImage(title) {
-        const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+        const {data} = await this.axios.get(API_ENDPOINT, {
             params: {
                 format: 'json',
                 action: 'query',
@@ -281,7 +281,7 @@ const Mirror = class Mirror {
         const updatedImages = []
         let aicontinue = null
         do {
-            const {data} = await axios.get(new URL(API_ENDPOINT, this.config.sourceUrl).href, {
+            const {data} = await this.axios.get(API_ENDPOINT, {
                 params: {
                     format: 'json',
                     action: 'query',
