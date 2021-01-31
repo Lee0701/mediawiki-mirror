@@ -15,7 +15,7 @@
             </h2>
             <hr>
         </header>
-        <main id="content" class="site-main">
+        <main class="site-main">
             <h1>{{ page.title }}</h1>
             <div class="catlinks">
                 <span>{{ site.namespace.names[14] }} : </span>
@@ -23,14 +23,19 @@
                     <a href="{{ category.url }}">{{ category.name }}</a>
                 {% endfor %}
             </div>
-            {% if page.members and page.members.length > 0 %}
-                <ul class="catmembers">
-                    {% for member in page.members %}
-                        <li><a href="{{ member.url }}">{{ member.name }}</a></li>
-                    {% endfor %}
-                </ul>
+            <article id="content">
+                {% if page.members and page.members.length > 0 %}
+                    <ul class="catmembers">
+                        {% for member in page.members %}
+                            <li><a href="{{ member.url }}">{{ member.name }}</a></li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+                {{ page.content }}
+            </article>
+            {% if page.timestamp != 0 %}
+                <div class="timestamp">Last Updated: {{ page.timestamp | date: "%Y-%m-%d %H:%M:%S" }}</div>
             {% endif %}
-            {{ page.content }}
         </main>
     </body>
 </html>

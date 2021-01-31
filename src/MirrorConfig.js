@@ -28,7 +28,7 @@ const MirrorConfig = class MirrorConfig {
 
         this.path = {
             raw: '/raw',
-            pages: '/pages',
+            pages: '/wiki',
             images: '/images',
             skin: '/skin',
         }

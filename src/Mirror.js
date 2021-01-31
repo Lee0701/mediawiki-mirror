@@ -62,7 +62,7 @@ const Mirror = class Mirror {
         this.config.meta.mainPage = '/' + general.mainpage
         this.config.namespace.names = namespaces
 
-        await this.writeRawPage({title: "index", text: `<html><body><div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div></body></html>`})
+        await this.writeRawPage({title: "index", timestamp: 0, text: `<html><body><div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.meta.mainPage)}";</script></div></body></html>`})
 
     }
 
@@ -71,8 +71,8 @@ const Mirror = class Mirror {
         const rawTextPath = this.getRawTextPath(rawPage.title)
         this.mkdir(rawPath)
         this.mkdir(rawTextPath)
-        const {title, categories, members, text} = rawPage
-        const content = {title, categories, members}
+        const {title, timestamp, categories, members, text} = rawPage
+        const content = {title, timestamp, categories, members}
         fs.writeFileSync(rawPath, JSON.stringify(content))
         fs.writeFileSync(rawTextPath, text)
     }
@@ -121,7 +121,10 @@ const Mirror = class Mirror {
         return members
     }
 
-    async updatePage(title, images=true) {
+    async updatePage(title, timestamp, images=true) {
+        if(!title) return null
+        if(typeof timestamp == 'string') timestamp = new Date(timestamp).getTime()
+        else if(typeof timestamp != 'number') timestamp = 0
         const isCategory = title.indexOf(':') !== -1
                 && title.slice(0, title.indexOf(':')) == this.config.namespace.names[14]
         const {data} = await this.axios.get(API_ENDPOINT, {
@@ -153,7 +156,7 @@ const Mirror = class Mirror {
                 this.downloadImage(sourceUrl.href, destPath)
             })
         }
-        const page = {title, text: $.html().replace(/\n+/g, '\n'), categories}
+        const page = {title, timestamp, text: $.html().replace(/\n+/g, '\n'), categories}
         if(isCategory) page.members = await this.getCategoryMembers(title)
         await this.writeRawPage(page)
         await this.buildPage(page)
@@ -174,9 +177,9 @@ const Mirror = class Mirror {
                     apcontinue,
                 }
             })
-            const titles = data.query.allpages.map(({title}) => title)
+            const allPages = data.query.allpages
             apcontinue = data.continue ? data.continue.apcontinue : null
-            updatedPages.push(...await Promise.all(titles.map((title) => this.updatePage(title, images))))
+            updatedPages.push(...await Promise.all(allPages.map(({title}) => this.updatePage(title, null, images))))
             await this.sleep(interval)
         } while(apcontinue)
         return updatedPages.filter((page) => page)
@@ -205,14 +208,15 @@ const Mirror = class Mirror {
                     format: 'json',
                     action: 'query',
                     list: 'recentchanges',
+                    rcprop: 'title|timestamp',
                     rclimit: batch,
                     rcnamespace,
                     rcend,
                     rccontinue,
                 }
             })
-            const titles = data.query.recentchanges.map(({title}) => title)
-            updatedPages.push(...await Promise.all(titles.map((title) => this.updatePage(title, images))))
+            const changes = data.query.recentchanges
+            updatedPages.push(...await Promise.all(changes.map(({title, timestamp}) => this.updatePage(title, timestamp, images))))
             await this.sleep(interval)
         } while(rccontinue)
         return updatedPages.filter((page) => page)
@@ -220,6 +224,7 @@ const Mirror = class Mirror {
 
     async buildPage(rawPage) {
         const title = rawPage.title
+        const timestamp = Math.floor(rawPage.timestamp / 1000) || 0
         const text = rawPage.text.toString()
 
         const categories = (rawPage.categories || []).map((category) => ({
@@ -229,7 +234,7 @@ const Mirror = class Mirror {
         const members = (rawPage.members || [])
                 .map((m) => ({name: m, url: this.makeLink(m)}))
         
-        const page = {title, content: text, categories, members}
+        const page = {title, timestamp, content: text, categories, members}
         const $ = cheerio.load(text)
         const mwParserOutput = $('.mw-parser-output')
 
