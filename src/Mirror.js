@@ -60,7 +60,7 @@ const Mirror = class Mirror {
         this.config.mainPage = '/' + general.mainpage
         this.config.namespaces = namespaces
 
-        await this.writeRawPage({title: "index", text: `<div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div>`})
+        await this.writeRawPage({title: "index", text: `<html><body><div class="mw-parser-output"><script>location.href = "${this.makeLink(this.config.mainPage)}";</script></div></body></html>`})
 
     }
 
