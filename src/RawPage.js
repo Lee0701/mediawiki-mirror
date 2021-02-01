@@ -7,8 +7,9 @@ const RAW_FILE_EXTENSION = '.json'
 const RAW_TEXT_FILE_EXTENSION = '.txt'
 
 const RawPage = class RawPage {
-    constructor(title, timestamp, text, categories=[], members=[], file=null) {
+    constructor(title, namespace, timestamp, text, categories=[], members=[], file=null) {
         this.title = title
+        this.namespace = namespace
         this.timestamp = timestamp
         this.text = text
         this.categories = categories
@@ -23,8 +24,8 @@ const RawPage = class RawPage {
         mkdir(rawPath)
         mkdir(rawTextPath)
 
-        const {title, timestamp, categories, members, file, text} = this
-        const content = JSON.stringify({title, timestamp, categories, members, file})
+        const {title, namespace, timestamp, categories, members, file, text} = this
+        const content = JSON.stringify({title, namespace, timestamp, categories, members, file}, null, 2)
         
         fs.writeFileSync(rawPath, content)
         fs.writeFileSync(rawTextPath, text)
@@ -37,10 +38,10 @@ RawPage.load = function(name, dir) {
     const rawPath = getPath(name, dir)
     const rawTextPath = getTextPath(name, dir)
 
-    const {title, timestamp, categories, members, file} = JSON.parse(fs.readFileSync(rawPath))
+    const {title, namespace, timestamp, categories, members, file} = JSON.parse(fs.readFileSync(rawPath))
     const text = fs.readFileSync(rawTextPath).toString()
 
-    const rawPage = new RawPage(title, timestamp, text, categories, members, file)
+    const rawPage = new RawPage(title, namespace, timestamp, text, categories, members, file)
     return rawPage
 }
 

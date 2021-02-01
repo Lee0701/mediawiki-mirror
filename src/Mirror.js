@@ -64,8 +64,9 @@ const Mirror = class Mirror {
 
         this.config.meta.mainPage = '/' + general.mainpage
         this.config.namespace.names = namespaces
+        this.config.namespace.numbers = Object.entries(namespaces).reduce((a, [value, key]) => (a[key] = parseInt(value), a), {})
 
-        await new RawPage("index", 0, `<html><body><div class="mw-parser-output"><script>location.href = "${this.pageBuilder.makeLink(this.config.meta.mainPage)}";</script></div></body></html>`).write(this.rawDir)
+        await new RawPage("index", -1, 0, `<html><body><div class="mw-parser-output"><script>location.href = "${this.pageBuilder.makeLink(this.config.meta.mainPage)}";</script></div></body></html>`).write(this.rawDir)
 
     }
 
@@ -95,8 +96,9 @@ const Mirror = class Mirror {
         else if(typeof timestamp != 'number') timestamp = 0
 
         const sliced = title.slice(0, title.indexOf(':'))
-        const isCategory = title.indexOf(':') !== -1 && sliced == this.config.namespace.names[14]
-        const isFile = title.indexOf(':') !== -1 && sliced == this.config.namespace.names[6]
+        const namespace = (title.indexOf(':') && this.config.namespace.numbers[sliced]) ? this.config.namespace.numbers[sliced] : 0
+        const isCategory = namespace == 14
+        const isFile = namespace == 6
 
         const {data} = await this.axios.get(API_ENDPOINT, {
             params: {
@@ -129,7 +131,7 @@ const Mirror = class Mirror {
         const members = []
         if(isCategory) members.push(...await this.getCategoryMembers(title))
         const file = (isFile) ? this.getImageTitle((await this.updateImage(title)).sourceUrl) : null
-        const rawPage = new RawPage(title, timestamp, $.html().replace(/\n+/g, '\n'), categories, members, file)
+        const rawPage = new RawPage(title, namespace, timestamp, $.html().replace(/\n+/g, '\n'), categories, members, file)
         await rawPage.write(this.rawDir)
         const builtPage = await this.pageBuilder.build(rawPage)
         builtPage.write(this.getPagePath(builtPage.title))
