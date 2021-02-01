@@ -21,8 +21,9 @@
             <head class="main-header">
                 <h1 class="page-title">{{ page.title }}</h1>
                 <nav class="main-nav">
-                    <a href="{{ site.source.url }}/index.php?title={{ page.title }}&action=edit">Edit</a>
-                    <a href="{{ site.source.url }}/index.php?title={{ page.title }}&action=history">History</a>
+                    <a href="{{ site.source.url }}/index.php?title={{ page.title }}">原本</a>
+                    <a href="{{ site.source.url }}/index.php?title={{ page.title }}&action=edit">編輯</a>
+                    <a href="{{ site.source.url }}/index.php?title={{ page.title }}&action=history">歷史</a>
                 </nav>
             </head>
             <hr>
@@ -44,7 +45,7 @@
             </article>
             <hr>
             {% if page.timestamp != 0 %}
-                <div class="timestamp">Last Updated: {{ page.timestamp | date: "%Y-%m-%d %H:%M:%S" }}</div>
+                <div class="timestamp">最近 編輯: {{ page.timestamp | date: "%Y-%m-%d %H:%M:%S" }}</div>
             {% endif %}
         </main>
         <footer class="site-footer">
