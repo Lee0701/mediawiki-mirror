@@ -23,7 +23,6 @@ body {
     padding: 0px 20px;
 }
 
-
 .site-main {
     min-height: 768px;
     margin-top: 10px;
@@ -65,6 +64,11 @@ nav > * {
 
 .site-nav a, .site-nav a:visited {
     color: white;
+}
+
+.catmembers {
+    column-count: 3;
+    column-width: 24em;
 }
 
 a, a:visited {
