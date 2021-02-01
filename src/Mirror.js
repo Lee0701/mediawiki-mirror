@@ -104,7 +104,7 @@ const Mirror = class Mirror {
             }
         })
         if(!data.parse) return null
-        const categories = (data.parse.categories || []).map((category) => this.config.namespace.names[14] + ':' + category['*'])
+        const categories = (data.parse.categories || []).map(({category}) => this.config.namespace.names[14] + ':' + category)
         const {text} = data.parse
         const $ = cheerio.load(text)
         $('*').contents().filter((_i, {type}) => type === 'comment').remove()

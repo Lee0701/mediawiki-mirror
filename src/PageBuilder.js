@@ -22,7 +22,7 @@ const PageBuilder = class PageBuilder {
         const text = rawPage.text.toString()
 
         const categories = (rawPage.categories || []).map((category) => ({
-            name: category.split(':')[1],
+            name: category,
             url: this.makeLink(category)
         }))
         const members = (rawPage.members || [])
@@ -36,10 +36,10 @@ const PageBuilder = class PageBuilder {
             return this.processLink(href)
         })
         mwParserOutput.find('img').attr('src', (_i, src) => {
-            if(!src) return
+            if(!src) return null
             return this.processImageSrc(src)
         }).attr('srcset', (_i, srcset) => {
-            if(!srcset) return
+            if(!srcset) return null
             return srcset.split(/, +/)
                     .map((s) => s.split(/ +/))
                     .map((entries) => [this.processImageSrc(entries[0]), ...entries.slice(1)])
