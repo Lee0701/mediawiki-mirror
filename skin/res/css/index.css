@@ -31,18 +31,23 @@ body {
     box-shadow: 10px 10px 0 #aaa;
 }
 
-.site-nav {
-    vertical-align: middle;
-}
-
-.site-nav > * {
+nav > * {
     display: inline-block;
-    margin: 5px 10px;
+    margin: 0px 10px;
     font-size: 1.25em;
 }
 
 .site-nav a, .site-nav a:visited {
     color: white;
+}
+
+.main-nav {
+    float: right;
+    margin: 25px;
+}
+
+.page-title {
+    display: inline-block;
 }
 
 a, a:visited {
