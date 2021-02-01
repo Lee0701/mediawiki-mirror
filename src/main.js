@@ -56,20 +56,16 @@ if(args.length > 0) {
 
     } else if(command == 'update') {
         if(args.length > 0) {
-            const type = args[0]
-            const dir = (args.length > 1) ? args[1] : '.'
+            const dir = (args.length > 0) ? args[0] : '.'
+            const timestamp = (args.length > 1) ? args[1] : null
             const batch = (args.length > 2) ? parseInt(args[2]) : DEFAULT_BATCH
             const interval = (args.length > 3) ? parseInt(args[3]) : DEFAULT_INTERVAL
             const mirror = Mirror.load(dir)
             console.log(`update started.`)
-            if(type == 'pages') {
-                mirror.updatePages(interval, batch, true).then((updatedPages) => {
-                    console.log(`${updatedPages.length} pages updated.`)
-                    mirror.writeMetadata()
-                }).catch(console.error)
-            } else if(type == 'images') {
-                
-            }
+            mirror.updatePages(interval, batch, timestamp, true).then((updatedPages) => {
+                console.log(`${updatedPages.length} pages updated.`)
+                mirror.writeMetadata()
+            }).catch(console.error)
         }
 
     } else if(command == 'fullbuild') {

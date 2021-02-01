@@ -16,8 +16,9 @@ const RawPage = class RawPage {
     }
 
     async write(dir) {
-        const rawPath = getPath(this.title, dir)
-        const rawTextPath = getTextPath(this.title, dir)
+        const name = this.title.replace(/ /g, '_')
+        const rawPath = getPath(name, dir)
+        const rawTextPath = getTextPath(name, dir)
         mkdir(rawPath)
         mkdir(rawTextPath)
 
@@ -31,6 +32,7 @@ const RawPage = class RawPage {
 }
 
 RawPage.load = function(name, dir) {
+    name = name.replace(/ /g, '_')
     const rawPath = getPath(name, dir)
     const rawTextPath = getTextPath(name, dir)
 

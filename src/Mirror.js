@@ -164,10 +164,32 @@ const Mirror = class Mirror {
         return result
     }
 
-    async updatePages(interval, batch, images) {
+    async updatePages(interval, batch, rcend, images) {
         this.mkdirs()
         const rcnamespace = this.config.namespace.update.join('|')
-        const rcend = Math.floor(this.config.lastUpdate / 1000) // //milliseconds to seconds
+        if(rcend != null) {
+            rcend = rcend.toString()
+            if(rcend.length == 10 || rcend.length == 13) {
+                rcend = parseInt(rcend)
+            } else if(rcend.length == 8) {
+                const date = [rcend.slice(0, 4), rcend.slice(4, 6), rcend.slice(6, 8)].join('-')
+                rcend = new Date(date).getTime()
+            } else if(rcend.length == 14) {
+                const date = [rcend.slice(0, 4), rcend.slice(4, 6), rcend.slice(6, 8)].join('-')
+                const time = [rcend.slice(8, 10), rcend.slice(10, 12), rcend.slice(12, 14)].join(':')
+                rcend = new Date(date + ' ' + time).getTime()
+            } else {
+                rcend = Date.parse(rcend).getTime()
+            }
+        }
+        if(rcend == null || rcend == NaN) {
+            rcend = this.config.lastUpdate
+        }
+        if(rcend.toString().length == 13) {
+            // milliseconds to seconds
+            rcend = Math.floor(rcend / 1000)
+        }
+        
         this.config.lastUpdate = new Date().getTime()
         const updatedPages = []
         let rccontinue = null
@@ -263,6 +285,7 @@ const Mirror = class Mirror {
     }
 
     getPagePath(title) {
+        title = title.replace(/ /g, '_')
         return path.join(this.dir, this.config.path.pages, title + this.config.extension.page)
     }
 
