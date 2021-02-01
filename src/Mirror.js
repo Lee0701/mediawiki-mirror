@@ -103,23 +103,21 @@ const Mirror = class Mirror {
                 formatversion: 2,
             }
         })
-        const categoriesResult = await this.axios.get(API_ENDPOINT, {
-            params: {
-                format: 'json',
-                action: 'query',
-                titles: title,
-                prop: 'categories',
-            }
-        })
-        const categories = (Object.values(categoriesResult.data.query.pages)[0].categories || []).map(({title}) => title)
         if(!data.parse) return null
+        const categories = (data.parse.categories || []).map((category) => this.config.namespace.names[14] + ':' + category['*'])
         const {text} = data.parse
         const $ = cheerio.load(text)
         $('*').contents().filter((_i, {type}) => type === 'comment').remove()
         if(images) {
             $('img').each(async (_i, img) => {
                 const src = img.attribs['src']
-                this.downloadImage(src, true)
+                const srcset = img.attribs['srcset']
+                if(src) this.downloadImage(src, true)
+                if(srcset) {
+                    srcset.split(/, +/)
+                            .map((s) => s.split(/ +/))
+                            .forEach(([src]) => this.downloadImage(src, true))
+                }
             })
         }
         const members = []
@@ -194,7 +192,7 @@ const Mirror = class Mirror {
     }
 
     async buildPage(title) {
-        const rawPage = this.loadRawPage(title)
+        const rawPage = await this.loadRawPage(title)
         const builtPage = await this.pageBuilder.build(rawPage)
         builtPage.write(this.getPagePath(builtPage.title))
         return builtPage
@@ -204,9 +202,9 @@ const Mirror = class Mirror {
         fse.copySync(path.join(this.dir, this.config.path.skin, 'res'), path.join(this.dir, 'res'))
         const list = fs.readdirSync(path.join(this.dir, this.config.path.raw))
                 .map((title) => path.join(this.dir, this.config.path.raw, title))
-                .filter((filePath) => !fs.statSync(filePath).isDirectory() && filePath.endsWith(RAW_FILE_EXTENSION))
+                .filter((filePath) => !fs.statSync(filePath).isDirectory() && filePath.endsWith('.json'))
         return list.map(async (filePath) => {
-            const title = JSON.parse(fs.readFileSync(fileName)).title
+            const title = JSON.parse(fs.readFileSync(filePath)).title
             return await this.buildPage(title)
         }).filter((page) => page)
     }

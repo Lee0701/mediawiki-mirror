@@ -2,7 +2,7 @@
 const combineURLs = require('axios/lib/helpers/combineURLs')
 const cheerio = require('cheerio')
 
-const RawPage = require('./RawPage')
+const ProcessedPage = require('./ProcessedPage')
 const BuiltPage = require('./BuiltPage')
 
 const PageBuilder = class PageBuilder {
@@ -38,9 +38,16 @@ const PageBuilder = class PageBuilder {
         mwParserOutput.find('img').attr('src', (_i, src) => {
             if(!src) return
             return this.processImageSrc(src)
+        }).attr('srcset', (_i, srcset) => {
+            if(!srcset) return
+            return srcset.split(/, +/)
+                    .map((s) => s.split(/ +/))
+                    .map((entries) => [this.processImageSrc(entries[0]), ...entries.slice(1)])
+                    .map((entries) => entries.join(' '))
+                    .join(', ')
         })
-        const content = mwParserOutput.html().replace(/\r?\n\r?\n/g, '\n')
-        const processedPage = new RawPage(title, timestamp, content, categories, members)
+        const content = mwParserOutput.html()
+        const processedPage = new ProcessedPage(title, timestamp, content, categories, members)
 
         const formattedContent = this.skin.formatIndex({site: this.config, page: processedPage})
         const builtPage = new BuiltPage(title, formattedContent)

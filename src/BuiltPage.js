@@ -10,9 +10,8 @@ const BuiltPage = class BuiltPage {
 
     async write(pagePath) {
         mkdir(pagePath)
-        const {title, content} = this
-        const writeContent = JSON.stringify({title, content})
-        fs.writeFileSync(pagePath, writeContent)
+        const {content} = this
+        fs.writeFileSync(pagePath, content)
     }
 }
 
