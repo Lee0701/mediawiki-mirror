@@ -93,8 +93,11 @@ const Mirror = class Mirror {
         if(!title) return null
         if(typeof timestamp == 'string') timestamp = new Date(timestamp).getTime()
         else if(typeof timestamp != 'number') timestamp = 0
-        const isCategory = title.indexOf(':') !== -1
-                && title.slice(0, title.indexOf(':')) == this.config.namespace.names[14]
+
+        const sliced = title.slice(0, title.indexOf(':'))
+        const isCategory = title.indexOf(':') !== -1 && sliced == this.config.namespace.names[14]
+        const isFile = title.indexOf(':') !== -1 && sliced == this.config.namespace.names[6]
+
         const {data} = await this.axios.get(API_ENDPOINT, {
             params: {
                 format: 'json',
@@ -125,7 +128,8 @@ const Mirror = class Mirror {
         }
         const members = []
         if(isCategory) members.push(...await this.getCategoryMembers(title))
-        const rawPage = new RawPage(title, timestamp, $.html().replace(/\n+/g, '\n'), categories, members)
+        const file = (isFile) ? this.getImageTitle((await this.updateImage(title)).sourceUrl) : null
+        const rawPage = new RawPage(title, timestamp, $.html().replace(/\n+/g, '\n'), categories, members, file)
         await rawPage.write(this.rawDir)
         const builtPage = await this.pageBuilder.build(rawPage)
         builtPage.write(this.getPagePath(builtPage.title))
@@ -280,7 +284,7 @@ const Mirror = class Mirror {
             })
             await writeStream(destPath, data)
         }
-        return new PageImage(destPath, sourceUrl)
+        return new PageImage(sourceUrl, destPath)
     }
 
     async loadRawPage(title) {
@@ -294,7 +298,11 @@ const Mirror = class Mirror {
 
     getImagePath(src) {
         const sourceUrl = new URL(src, this.config.source.url)
-        return path.join(this.dir, this.config.path.images, pageFilename(sourceUrl.pathname.split('/').slice(2).join('/')))
+        return path.join(this.dir, this.config.path.images, pageFilename(this.getImageTitle(sourceUrl)))
+    }
+
+    getImageTitle(sourceUrl) {
+        return sourceUrl.pathname.split('/').slice(2).join('/')
     }
     
     mkdirs() {
