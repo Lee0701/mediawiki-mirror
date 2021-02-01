@@ -15,6 +15,10 @@
                         <a href="{{ site.baseUrl }}{{ site.path.pages }}{{ site.meta.mainPage }}">{{ site.meta.title }}</a>
                     </span>
                 </nav>
+                <form class="goto" onsubmit="location.href = '{{ site.baseUrl }}{{ site.path.pages }}/' + document.querySelector('#goto-input').value + '{{ site.extension.page }}'; return false;">
+                    <input type="text" id="goto-input">
+                    <button type="submit">移動</button>
+                </form>
             </main>
         </header>
         <main class="site-main">
