@@ -1,7 +1,7 @@
 
 const path = require('path')
 const express = require('express')
-const Mirror = require('./Mirror')
+const Mirror = require('./mirror/Mirror')
 
 const args = process.argv.slice(2)
 

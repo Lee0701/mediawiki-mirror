@@ -9,9 +9,10 @@ const {mkdir, writeStream, pageFilename} = require('./tools')
 
 const Skin = require('./Skin')
 const MirrorConfig = require('./MirrorConfig')
-const RawPage = require('./RawPage')
-const PageImage = require('./PageImage')
 const PageBuilder = require('./PageBuilder')
+
+const RawPage = require('./content/RawPage')
+const PageImage = require('./content/PageImage')
 
 const API_ENDPOINT = '/api.php'
 
