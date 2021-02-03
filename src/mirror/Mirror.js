@@ -255,8 +255,9 @@ const Mirror = class Mirror {
         ).filter((entry) => entry && entry.length)
         const counts = (wordCountList).map(([_w, i]) => i)
         const maxCount = Math.max(...counts)
-        const minCount = Math.min(...counts)
-        const filterCount = Math.round(minCount / maxCount * 1000)
+        // const minCount = Math.min(...counts)
+        // console.log(maxCount, minCount)
+        const filterCount = Math.round(Math.log(maxCount))
 
         const wordList = wordCountList
                 .filter(([_w, i]) => i > filterCount)
