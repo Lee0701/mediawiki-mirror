@@ -8,9 +8,8 @@ const LATIN_RANGE = 'A-Za-z'
 const HANJA_RANGE = '\u4E00-\u62FF\u6300-\u77FF\u7800-\u8CFF\u8D00-\u9FFF\u3400-\u4DBF'
 const HANGUL_RANGE = '가-힣ㄱ-ㅎㅏ-ㅣ'
 const WORD_RANGE = HANGUL_RANGE + HANJA_RANGE
-const PUNCTUATIONS = '.,?!()[]{}<>'
 
-const WORD_SPLIT_REGEX = new RegExp(`[\s${PUNCTUATIONS}]`)
+const WORD_SPLIT_REGEX = /[\s\.\,\?\!]+/
 const HANJA_WORD_REGEX = new RegExp(`[${HANJA_RANGE}]+`, 'g')
 const HANJA_HANGUL_REGEX = new RegExp(`[${WORD_RANGE}]+`, 'g')
 const NUMBER_WORD_REGEX = new RegExp(`[${NUMBER_RANGE}]+[${WORD_RANGE}]+`, 'g')
@@ -46,10 +45,15 @@ const WordIndexer = class WordIndexer {
         const textWords = text.split(WORD_SPLIT_REGEX)
         wordList.forEach((word) => {
             textWords.forEach((wordInText, index) => {
+                if(word == '') return
                 const p = wordInText.indexOf(word)
-                if(!p) return
+                if(p == -1) return
                 if(!result[word]) result[word] = new WordIndex(word)
-                const surrounding = textWords.slice(index - 2, index + 2)
+                const start = Math.max(index - 2, 0)
+                const end = Math.min(index + 2, textWords.length)
+                console.log(index, start, end)
+                const surrounding = textWords.slice(start, end).join(' ')
+                console.log(`word=${word}, surrounding=${surrounding}`)
                 result[word].addEntry(title, surrounding)
             })
         })
@@ -63,8 +67,7 @@ const WordIndexer = class WordIndexer {
     }
 
     preprocess(text) {
-        return cheerio.load(text)('.mw-parser-output')
-                .text().replace(/\n+/g, '\n')
+        return cheerio.load(text)('.mw-parser-output').text()
     }
 
 }

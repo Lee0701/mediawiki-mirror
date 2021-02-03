@@ -254,13 +254,16 @@ const Mirror = class Mirror {
         const maxCount = Math.max(...counts)
         const minCount = Math.min(...counts)
         const filterCount = Math.round(minCount / maxCount * 1000)
-        console.log(maxCount, minCount, filterCount)
+
         const wordList = wordCountList
                 .filter(([_w, i]) => i > filterCount)
                 .map(([word]) => word)
-        console.log(wordCountList.length, wordList.length)
         const wordIndices = await this.wordIndexer.build(wordList, rawPages)
-        
+
+        await Promise.all(Object.values(wordIndices).map((wordIndex) => {
+            return wordIndex.write(path.join(this.dir, this.config.path.indices))
+        }))
+
         return wordIndices
     }
 
@@ -345,6 +348,8 @@ const Mirror = class Mirror {
         if(!fs.existsSync(raws)) fs.mkdirSync(raws, { recursive: true })
         const images = path.join(this.dir, this.config.path.images)
         if(!fs.existsSync(images)) fs.mkdirSync(images, { recursive: true })
+        const indices = path.join(this.dir, this.config.path.indices)
+        if(!fs.existsSync(indices)) fs.mkdirSync(indices, { recursive: true })
     }
 
     copySkinResources() {

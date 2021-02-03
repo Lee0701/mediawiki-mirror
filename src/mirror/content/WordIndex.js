@@ -1,5 +1,6 @@
 
 const fs = require('fs')
+const path = require('path')
 
 const WordIndex = class WordIndex {
     constructor(word) {
@@ -17,6 +18,11 @@ const WordIndex = class WordIndex {
         result.pages.push(...another.pages)
         result.pages = result.pages.filter((page, i, arr) => i === arr.findIndex((p) => p.title == page.title))
         return result
+    }
+
+    async write(dir) {
+        const filePath = path.join(dir, this.word + '.json')
+        fs.writeFileSync(filePath, JSON.stringify(this, null, 2))
     }
 }
 
